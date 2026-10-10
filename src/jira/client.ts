@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { adfToText } from './adf.js';
 import { JiraError } from './errors.js';
+import { KEY_PATTERN } from './keys.js';
 import { ticketSchema, type Ticket } from './ticket.js';
 
 export interface JiraClientConfig {
@@ -24,7 +25,6 @@ export interface JiraClientOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
 const MAX_RETRY_AFTER_MS = 30_000;
 const BASE_FIELDS = [
   'summary',
@@ -73,6 +73,29 @@ export interface ConnectionStatus {
   project?: { key: string; accessible: boolean };
 }
 
+export interface SearchResult {
+  tickets: Ticket[];
+  /** True when more tickets matched than were returned. */
+  truncated: boolean;
+}
+
+export interface SearchOptions {
+  /** Most tickets to return. Default 100. */
+  maxTickets?: number;
+  /** Tickets requested per page. Default and maximum 100. */
+  pageSize?: number;
+}
+
+const DEFAULT_MAX_TICKETS = 100;
+const MAX_PAGE_SIZE = 100;
+const MAX_PAGES = 100;
+
+const searchPageSchema = z.looseObject({
+  issues: z.array(z.unknown()),
+  nextPageToken: z.string().nullish(),
+  isLast: z.boolean().nullish(),
+});
+
 const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -111,10 +134,61 @@ export class JiraClient {
       );
     }
 
-    const fields = this.acField ? [...BASE_FIELDS, this.acField] : BASE_FIELDS;
-    const query = new URLSearchParams({ fields: fields.join(',') });
+    const query = new URLSearchParams({ fields: this.fieldList().join(',') });
     const body = await this.request(`/rest/api/3/issue/${key}?${query.toString()}`, key);
     return this.toTicket(body, key);
+  }
+
+  /**
+   * Runs a JQL search and returns the matching tickets, following Jira's paging until the
+   * end or until maxTickets is reached.
+   */
+  async searchIssues(jql: string, options: SearchOptions = {}): Promise<SearchResult> {
+    const max = Math.max(1, options.maxTickets ?? DEFAULT_MAX_TICKETS);
+    const pageSize = Math.min(Math.max(1, options.pageSize ?? MAX_PAGE_SIZE), MAX_PAGE_SIZE);
+    const tickets: Ticket[] = [];
+    let truncated = false;
+    let pageToken: string | undefined;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const raw = await this.request('/rest/api/3/search/jql', 'the search', {
+        method: 'POST',
+        body: {
+          jql,
+          fields: this.fieldList(),
+          maxResults: pageSize,
+          ...(pageToken !== undefined && { nextPageToken: pageToken }),
+        },
+      });
+
+      const parsed = searchPageSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new JiraError('invalid_response', 'Jira returned an unexpected search response.');
+      }
+
+      for (const issue of parsed.data.issues) {
+        if (tickets.length >= max) {
+          truncated = true;
+          break;
+        }
+        tickets.push(this.toTicket(issue, 'a search result'));
+      }
+
+      const next = parsed.data.nextPageToken ?? undefined;
+      const hasMore = next !== undefined && parsed.data.isLast !== true && next !== pageToken;
+      if (truncated || !hasMore) break;
+      if (tickets.length >= max) {
+        truncated = true;
+        break;
+      }
+      pageToken = next;
+    }
+
+    return { tickets, truncated };
+  }
+
+  private fieldList(): string[] {
+    return this.acField ? [...BASE_FIELDS, this.acField] : BASE_FIELDS;
   }
 
   /**
@@ -190,14 +264,24 @@ export class JiraClient {
     });
   }
 
-  private async request(path: string, key: string): Promise<unknown> {
+  private async request(
+    path: string,
+    key: string,
+    init: { method?: 'GET' | 'POST'; body?: unknown } = {},
+  ): Promise<unknown> {
     for (let attempt = 0; ; attempt++) {
       const canRetry = attempt < this.maxRetries;
 
       let response: Response;
       try {
         response = await this.fetchFn(`${this.baseUrl}${path}`, {
-          headers: { Authorization: this.authHeader, Accept: 'application/json' },
+          method: init.method ?? 'GET',
+          headers: {
+            Authorization: this.authHeader,
+            Accept: 'application/json',
+            ...(init.body !== undefined && { 'Content-Type': 'application/json' }),
+          },
+          ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch (cause) {

@@ -32,6 +32,7 @@ const envSchema = z
     JIRA_API_TOKEN: optional(z.string().min(1)),
     JIRA_PROJECT: withDefault(z.string().min(1).default('SHP')),
     JIRA_AC_FIELD: optional(z.string().min(1)),
+    JIRA_ENABLE_RELEASE: withDefault(z.stringbool().default(false)),
 
     AI_PROVIDER: withDefault(z.enum(['claude', 'fake']).default('fake')),
     AI_API_KEY: optional(z.string().min(1)),
@@ -75,6 +76,8 @@ export interface AppConfig {
     apiToken: string;
     project: string;
     acceptanceCriteriaField?: string;
+    /** Release (Fix version) input. Off until the team confirms Fix versions are used. */
+    enableRelease: boolean;
   };
   ai: {
     provider: 'claude' | 'fake';
@@ -119,6 +122,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       email: env.JIRA_EMAIL,
       apiToken: env.JIRA_API_TOKEN,
       project: env.JIRA_PROJECT,
+      enableRelease: env.JIRA_ENABLE_RELEASE,
       ...(env.JIRA_AC_FIELD !== undefined && { acceptanceCriteriaField: env.JIRA_AC_FIELD }),
     };
   }
