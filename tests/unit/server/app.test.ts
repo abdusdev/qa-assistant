@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApp } from './app.js';
+import { createApp } from '../../../src/server/app.js';
 
 describe('createApp', () => {
   let close: (() => Promise<void>) | undefined;
