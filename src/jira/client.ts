@@ -65,6 +65,16 @@ const rawIssueSchema = z.looseObject({
   }),
 });
 
+export interface ConnectionStatus {
+  /** Name of the account the credentials belong to. */
+  displayName: string;
+  accountId: string;
+  /** Only set when a project key was checked. */
+  project?: { key: string; accessible: boolean };
+}
+
+const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class JiraClient {
@@ -105,6 +115,47 @@ export class JiraClient {
     const query = new URLSearchParams({ fields: fields.join(',') });
     const body = await this.request(`/rest/api/3/issue/${key}?${query.toString()}`, key);
     return this.toTicket(body, key);
+  }
+
+  /**
+   * Verifies the credentials by asking Jira who they belong to, and optionally whether
+   * that account can see a project. Does not depend on any ticket existing.
+   */
+  async checkConnection(projectKey?: string): Promise<ConnectionStatus> {
+    const project = projectKey?.trim().toUpperCase();
+    if (project !== undefined && !PROJECT_KEY_PATTERN.test(project)) {
+      throw new JiraError('invalid_key', `"${projectKey}" is not a valid Jira project key.`);
+    }
+
+    const body = await this.request('/rest/api/3/myself', 'your account');
+    const me = z.looseObject({ displayName: z.string(), accountId: z.string() }).safeParse(body);
+    if (!me.success) {
+      throw new JiraError('invalid_response', 'Jira returned an unexpected answer for "who am I".');
+    }
+
+    const status: ConnectionStatus = {
+      displayName: me.data.displayName,
+      accountId: me.data.accountId,
+    };
+    if (project !== undefined) {
+      status.project = { key: project, accessible: await this.canSeeProject(project) };
+    }
+    return status;
+  }
+
+  private async canSeeProject(projectKey: string): Promise<boolean> {
+    try {
+      await this.request(`/rest/api/3/project/${projectKey}`, projectKey);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof JiraError &&
+        (error.kind === 'not_found' || error.kind === 'forbidden')
+      ) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private toTicket(body: unknown, requestedKey: string): Ticket {

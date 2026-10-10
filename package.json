@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "jira:check": "node --env-file-if-exists=.env --import tsx src/jira/check.ts",
     "jira:ticket": "node --env-file-if-exists=.env --import tsx src/jira/cli.ts",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

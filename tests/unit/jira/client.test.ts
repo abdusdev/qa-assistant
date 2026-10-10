@@ -331,6 +331,76 @@ describe('JiraClient', () => {
     });
   });
 
+  describe('checkConnection', () => {
+    const me = { displayName: 'Abdus Salam', accountId: '712020:abc' };
+
+    it('reports who the credentials belong to', async () => {
+      fetchMock.mockResolvedValueOnce(json(me));
+
+      const status = await makeClient().checkConnection();
+
+      expect(status).toEqual(me);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]![0])).toBe(`${BASE_URL}/rest/api/3/myself`);
+    });
+
+    it('also reports whether a project is visible', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json(me))
+        .mockResolvedValueOnce(json({ key: 'SHP', name: 'ShipNest' }));
+
+      const status = await makeClient().checkConnection('shp');
+
+      expect(status.project).toEqual({ key: 'SHP', accessible: true });
+      expect(String(fetchMock.mock.calls[1]![0])).toBe(`${BASE_URL}/rest/api/3/project/SHP`);
+    });
+
+    it.each([404, 403])('reports a project as not visible when Jira answers %i', async (code) => {
+      fetchMock
+        .mockResolvedValueOnce(json(me))
+        .mockResolvedValueOnce(json({ errorMessages: ['no'] }, { status: code }));
+
+      const status = await makeClient().checkConnection('SHP');
+
+      expect(status.project).toEqual({ key: 'SHP', accessible: false });
+    });
+
+    it('fails clearly when the credentials are rejected', async () => {
+      fetchMock.mockResolvedValueOnce(json({}, { status: 401 }));
+
+      await expect(makeClient().checkConnection('SHP')).rejects.toMatchObject({
+        kind: 'unauthorized',
+        message: expect.stringContaining('JIRA_API_TOKEN') as string,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not hide a Jira outage behind "project not visible"', async () => {
+      fetchMock
+        .mockResolvedValueOnce(json(me))
+        .mockImplementation(async () => new Response('', { status: 503 }));
+
+      await expect(makeClient().checkConnection('SHP')).rejects.toMatchObject({
+        kind: 'server_error',
+      });
+    });
+
+    it('rejects an invalid project key without calling Jira', async () => {
+      await expect(makeClient().checkConnection('SHP/../x')).rejects.toMatchObject({
+        kind: 'invalid_key',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects an answer that does not look like an account', async () => {
+      fetchMock.mockResolvedValueOnce(json({ unexpected: true }));
+
+      await expect(makeClient().checkConnection()).rejects.toMatchObject({
+        kind: 'invalid_response',
+      });
+    });
+  });
+
   describe('secrets', () => {
     it('never puts the token or auth header in any error message', async () => {
       const basic = Buffer.from(`${EMAIL}:${TOKEN}`).toString('base64');
