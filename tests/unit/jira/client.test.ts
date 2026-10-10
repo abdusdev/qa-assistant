@@ -401,6 +401,182 @@ describe('JiraClient', () => {
     });
   });
 
+  describe('searchIssues', () => {
+    const JQL = 'sprint = "SN - Sprint 45" ORDER BY key ASC';
+
+    const issue = (key: string) => ({ ...issueBody(), key });
+    const page = (keys: string[], nextPageToken?: string, isLast?: boolean) =>
+      json({
+        issues: keys.map(issue),
+        ...(nextPageToken !== undefined && { nextPageToken }),
+        ...(isLast !== undefined && { isLast }),
+      });
+
+    const bodyOf = (call: number) =>
+      JSON.parse(String(fetchMock.mock.calls[call]![1]?.body)) as Record<string, unknown>;
+
+    it('posts the query to the search endpoint with the fields we need', async () => {
+      fetchMock.mockResolvedValueOnce(page(['SHP-1'], undefined, true));
+
+      const result = await makeClient().searchIssues(JQL);
+
+      expect(result.tickets.map((t) => t.key)).toEqual(['SHP-1']);
+      expect(result.truncated).toBe(false);
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(String(url)).toBe(`${BASE_URL}/rest/api/3/search/jql`);
+      expect(init?.method).toBe('POST');
+      const headers = init?.headers as Record<string, string>;
+      expect(headers['Content-Type']).toBe('application/json');
+      expect(headers.Authorization).toMatch(/^Basic /);
+      expect(bodyOf(0)).toEqual({
+        jql: JQL,
+        fields: [
+          'summary',
+          'description',
+          'status',
+          'issuetype',
+          'parent',
+          'labels',
+          'fixVersions',
+          'comment',
+        ],
+        maxResults: 100,
+      });
+    });
+
+    it('follows the page token until the last page', async () => {
+      fetchMock
+        .mockResolvedValueOnce(page(['SHP-1', 'SHP-2'], 'token-1'))
+        .mockResolvedValueOnce(page(['SHP-3', 'SHP-4'], 'token-2'))
+        .mockResolvedValueOnce(page(['SHP-5']));
+
+      const result = await makeClient().searchIssues(JQL, { pageSize: 2 });
+
+      expect(result.tickets.map((t) => t.key)).toEqual([
+        'SHP-1',
+        'SHP-2',
+        'SHP-3',
+        'SHP-4',
+        'SHP-5',
+      ]);
+      expect(result.truncated).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(bodyOf(0)).not.toHaveProperty('nextPageToken');
+      expect(bodyOf(1)).toMatchObject({ nextPageToken: 'token-1', maxResults: 2 });
+      expect(bodyOf(2)).toMatchObject({ nextPageToken: 'token-2' });
+    });
+
+    it('stops when Jira says this is the last page, even if a token is present', async () => {
+      fetchMock.mockResolvedValueOnce(page(['SHP-1'], 'stale-token', true));
+
+      const result = await makeClient().searchIssues(JQL);
+
+      expect(result.tickets).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops at the maximum and reports truncation', async () => {
+      fetchMock
+        .mockResolvedValueOnce(page(['SHP-1', 'SHP-2'], 'token-1'))
+        .mockResolvedValueOnce(page(['SHP-3', 'SHP-4'], 'token-2'));
+
+      const result = await makeClient().searchIssues(JQL, { maxTickets: 3, pageSize: 2 });
+
+      expect(result.tickets.map((t) => t.key)).toEqual(['SHP-1', 'SHP-2', 'SHP-3']);
+      expect(result.truncated).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports truncation when the maximum is reached and more pages exist', async () => {
+      fetchMock.mockResolvedValueOnce(page(['SHP-1', 'SHP-2'], 'token-1'));
+
+      const result = await makeClient().searchIssues(JQL, { maxTickets: 2, pageSize: 2 });
+
+      expect(result.tickets).toHaveLength(2);
+      expect(result.truncated).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not report truncation when the result is exactly the maximum', async () => {
+      fetchMock.mockResolvedValueOnce(page(['SHP-1', 'SHP-2'], undefined, true));
+
+      const result = await makeClient().searchIssues(JQL, { maxTickets: 2 });
+
+      expect(result.tickets).toHaveLength(2);
+      expect(result.truncated).toBe(false);
+    });
+
+    it('returns an empty list when nothing matches', async () => {
+      fetchMock.mockResolvedValueOnce(page([], undefined, true));
+
+      expect(await makeClient().searchIssues(JQL)).toEqual({ tickets: [], truncated: false });
+    });
+
+    it('does not loop forever if Jira keeps returning the same token', async () => {
+      fetchMock
+        .mockResolvedValueOnce(page(['SHP-1'], 'same'))
+        .mockResolvedValueOnce(page(['SHP-2'], 'same'));
+
+      const result = await makeClient().searchIssues(JQL, { pageSize: 1 });
+
+      expect(result.tickets.map((t) => t.key)).toEqual(['SHP-1', 'SHP-2']);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries a rate-limited search with the same body', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': '1' } }))
+        .mockResolvedValueOnce(page(['SHP-1'], undefined, true));
+
+      const result = await makeClient().searchIssues(JQL);
+
+      expect(result.tickets).toHaveLength(1);
+      expect(sleep).toHaveBeenCalledExactlyOnceWith(1000);
+      expect(bodyOf(1)).toEqual(bodyOf(0));
+    });
+
+    it("passes on Jira's explanation when the query is rejected", async () => {
+      fetchMock.mockResolvedValueOnce(
+        json(
+          { errorMessages: ["The value 'SN - Sprint 99' does not exist for the field 'sprint'."] },
+          { status: 400 },
+        ),
+      );
+
+      const error = await rejection(makeClient().searchIssues('sprint = "SN - Sprint 99"'));
+
+      expect(error).toMatchObject({ kind: 'bad_request', status: 400 });
+      expect(error.message).toContain("does not exist for the field 'sprint'");
+    });
+
+    it('rejects a response that is not a search result', async () => {
+      fetchMock.mockResolvedValueOnce(json({ unexpected: true }));
+
+      await expect(makeClient().searchIssues(JQL)).rejects.toMatchObject({
+        kind: 'invalid_response',
+      });
+    });
+
+    it('reads acceptance criteria from search results too', async () => {
+      fetchMock.mockResolvedValueOnce(
+        json({
+          issues: [
+            { ...issueBody({ customfield_10042: adf('Exactly 10 per page') }), key: 'SHP-1' },
+          ],
+          isLast: true,
+        }),
+      );
+
+      const result = await makeClient({
+        acceptanceCriteriaField: 'customfield_10042',
+      }).searchIssues(JQL);
+
+      expect(result.tickets[0]?.acceptanceCriteria).toBe('Exactly 10 per page');
+      expect(bodyOf(0).fields).toContain('customfield_10042');
+    });
+  });
+
   describe('secrets', () => {
     it('never puts the token or auth header in any error message', async () => {
       const basic = Buffer.from(`${EMAIL}:${TOKEN}`).toString('base64');

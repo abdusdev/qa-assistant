@@ -24,8 +24,24 @@ describe('loadConfig', () => {
       email: 'bot@example.com',
       apiToken: 'token-value',
       project: 'SHP',
+      enableRelease: false,
       acceptanceCriteriaField: 'customfield_10042',
     });
+  });
+
+  it('keeps release input off by default and turns it on with JIRA_ENABLE_RELEASE', () => {
+    const jira = {
+      JIRA_BASE_URL: 'https://example.atlassian.net',
+      JIRA_EMAIL: 'bot@example.com',
+      JIRA_API_TOKEN: 'token-value',
+    };
+
+    expect(loadConfig(jira).jira?.enableRelease).toBe(false);
+    expect(loadConfig({ ...jira, JIRA_ENABLE_RELEASE: 'true' }).jira?.enableRelease).toBe(true);
+    expect(loadConfig({ ...jira, JIRA_ENABLE_RELEASE: 'false' }).jira?.enableRelease).toBe(false);
+    expect(() => loadConfig({ ...jira, JIRA_ENABLE_RELEASE: 'maybe' })).toThrow(
+      /JIRA_ENABLE_RELEASE/,
+    );
   });
 
   it('treats empty values as not set', () => {

@@ -1,5 +1,6 @@
 export type JiraErrorKind =
   | 'invalid_key'
+  | 'invalid_input'
   | 'bad_request'
   | 'unauthorized'
   | 'forbidden'
