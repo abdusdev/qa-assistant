@@ -51,7 +51,8 @@ First time running the end-to-end tests: `npx playwright install chromium`.
 | `src/db`       | Database access                           |
 | `knowledge/`   | Product knowledge files used in prompts   |
 | `web/`         | Frontend                                  |
-| `tests/e2e/`   | Playwright tests                          |
+| `tests/unit/`  | Unit tests (Vitest), mirroring `src/`     |
+| `tests/e2e/`   | End-to-end tests (Playwright)             |
 | `docs/`        | Project plan and notes                    |
 
 ## Workflow

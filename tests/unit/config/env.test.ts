@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from './env.js';
+import { ConfigError, loadConfig } from '../../../src/config/env.js';
 
 describe('loadConfig', () => {
   it('applies defaults when nothing is set', () => {
