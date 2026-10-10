@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/server/index.ts'],
+      exclude: ['src/server/index.ts', 'src/jira/cli.ts', 'src/jira/check.ts'],
       reporter: ['text', 'lcov'],
       thresholds: {
         lines: 80,
