@@ -35,6 +35,7 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 | `npm run format`                        | Format the code (`format:check` only checks)                                                          |
 | `npm run typecheck`                     | Type-check the code                                                                                   |
 | `npm run check`                         | Everything CI runs: lint, format, types, unit and e2e                                                 |
+| `npm run ai:check`                      | Make one tiny call to the AI provider set in `.env` and print the answer and token use                |
 | `npm run jira:check`                    | Check that the Jira settings in `.env` work (who you are, can you see the project)                    |
 | `npm run jira:resolve -- epic SHP-4110` | Resolve an input (ticket, list, sprint, epic, release) to tickets, with `--type`, `--status`, `--max` |
 | `npm run jira:ticket -- SHP-1234`       | Print a Jira ticket as the AI will see it (needs Jira settings in `.env`)                             |
