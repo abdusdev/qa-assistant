@@ -18,6 +18,46 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 const lowercased = (value: unknown) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
+/** Where a case's content comes from. "inferred" means it is not stated anywhere we gave. */
+export const SOURCE_KINDS = [
+  'ticket',
+  'acceptance_criteria',
+  'comment',
+  'module_notes',
+  'past_cases',
+  'code_changes',
+  'inferred',
+] as const;
+
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+
+const SOURCE_ALIASES: Record<string, SourceKind> = {
+  description: 'ticket',
+  summary: 'ticket',
+  ticket_description: 'ticket',
+  acceptance_criterion: 'acceptance_criteria',
+  comments: 'comment',
+  module_note: 'module_notes',
+  past_case: 'past_cases',
+  code_change: 'code_changes',
+  code: 'code_changes',
+  assumption: 'inferred',
+  assumed: 'inferred',
+};
+
+/** Reads "Acceptance criteria", "description" and the like. Anything unknown counts as inferred. */
+const sourceKind = (value: unknown): unknown => {
+  if (typeof value !== 'string') return 'inferred';
+  const key = value.trim().toLowerCase().replace(/[s-]+/g, '_');
+  return SOURCE_ALIASES[key] ?? key;
+};
+
+export const sourceSchema = z.object({
+  from: z.preprocess(sourceKind, z.enum(SOURCE_KINDS).catch('inferred')),
+  /** A short excerpt copied from that part. Checked against the real text afterwards. */
+  quote: z.string().trim().max(400).default(''),
+});
+
 export const testCaseSchema = z.object({
   id: text(40),
   ticket: text(40),
@@ -27,13 +67,35 @@ export const testCaseSchema = z.object({
   priority: z.preprocess(lowercased, z.enum(PRIORITIES)),
   steps: z.array(text(500)).min(1).max(30),
   expected: text(1000),
+  /** What this case is based on. Verified after the answer, not trusted. */
+  sources: z.array(sourceSchema).max(6).default([]),
+  /** Everything the author had to assume. QA confirms these. */
+  assumptions: z.array(text(400)).max(10).default([]),
+  /** Setup and test data needed before the steps, such as "101 orders with a selected rate". */
+  preconditions: z.array(text(300)).max(10).default([]),
+  /** Ids of cases that must run before this one. */
+  depends_on: z.array(text(40)).max(10).default([]),
+  /**
+   * Set by us after checking the sources: grounded (a verified source and nothing assumed),
+   * partly (a verified source, but some details are assumed) or assumed (no verified source).
+   */
+  grounding: z.enum(['grounded', 'partly', 'assumed']).default('assumed'),
+});
+
+/** The model's own view of whether the ticket says enough to write reliable cases. */
+export const ticketDetailSchema = z.object({
+  sufficient: z.boolean().default(true),
+  missing: z.array(text(300)).max(10).default([]),
 });
 
 export const generatedCasesSchema = z.object({
+  detail: ticketDetailSchema.optional(),
   cases: z.array(testCaseSchema).min(1).max(40),
 });
 
 export type TestCase = z.infer<typeof testCaseSchema>;
+export type CaseSource = z.infer<typeof sourceSchema>;
+export type TicketDetail = z.infer<typeof ticketDetailSchema>;
 
 export const flowStepSchema = z.object({
   order: z.number().int().min(1),

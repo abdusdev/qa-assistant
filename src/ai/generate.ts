@@ -9,7 +9,14 @@ import {
   type BuiltPrompt,
   type PromptContext,
 } from './prompt.js';
-import { generatedCasesSchema, type TestCase } from './schemas.js';
+import {
+  assessTicketDetail,
+  buildEvidence,
+  groundCase,
+  mergeDetail,
+  type DetailAssessment,
+} from './grounding.js';
+import { generatedCasesSchema, type TestCase, type TicketDetail } from './schemas.js';
 import { UsageTracker, type AIProvider, type AIUsage } from './types.js';
 
 export interface GenerateOptions {
@@ -37,6 +44,8 @@ export interface GenerateResult {
   promptVersion: string;
   /** The model that answered the last call, which can differ per ticket when models fall back. */
   model: string;
+  /** Whether the ticket says enough to write reliable cases, and what is missing if not. */
+  detail: DetailAssessment;
 }
 
 /** The AI never produced a valid answer within the allowed attempts. */
@@ -57,7 +66,9 @@ export class GenerationError extends Error {
   }
 }
 
-type Parsed = { ok: true; cases: TestCase[] } | { ok: false; problems: string[] };
+type Parsed =
+  | { ok: true; cases: TestCase[]; detail: TicketDetail | undefined }
+  | { ok: false; problems: string[] };
 
 /** Turns an AI answer into validated cases, or a list of what is wrong with it. */
 function parseAnswer(text: string, truncated: boolean, ticketKey: string): Parsed {
@@ -85,12 +96,18 @@ function parseAnswer(text: string, truncated: boolean, ticketKey: string): Parse
   }
 
   // The ticket is known, so set it and the numbering ourselves instead of trusting the model.
-  const cases = result.data.cases.map((testCase, index) => ({
-    ...testCase,
-    id: `TC-${index + 1}`,
-    ticket: ticketKey,
-  }));
-  return { ok: true, cases };
+  // Dependencies are rewritten to the new numbers, and unknown or self references are dropped.
+  const newIdByOld = new Map<string, string>();
+  result.data.cases.forEach((testCase, index) => newIdByOld.set(testCase.id, `TC-${index + 1}`));
+
+  const cases = result.data.cases.map((testCase, index) => {
+    const id = `TC-${index + 1}`;
+    const dependsOn = testCase.depends_on
+      .map((old) => newIdByOld.get(old))
+      .filter((dep): dep is string => dep !== undefined && dep !== id);
+    return { ...testCase, id, ticket: ticketKey, depends_on: [...new Set(dependsOn)] };
+  });
+  return { ok: true, cases, detail: result.data.detail };
 }
 
 /**
@@ -123,6 +140,10 @@ export async function generateTestCases(
     return response;
   };
 
+  const evidence = buildEvidence(ticket, context);
+  const grounded = (items: TestCase[]) => items.map((item) => groundCase(item, evidence));
+  let modelDetail: TicketDetail | undefined;
+
   const original = buildGenerationPrompt(ticket, context);
   let request = original;
   let lastProblems: string[] = [];
@@ -136,8 +157,9 @@ export async function generateTestCases(
     const parsed = parseAnswer(response.text, response.truncated, ticket.key);
 
     if (parsed.ok) {
-      cases = parsed.cases;
-      lastDraftJson = JSON.stringify({ cases });
+      cases = grounded(parsed.cases);
+      modelDetail = parsed.detail;
+      lastDraftJson = JSON.stringify({ detail: modelDetail, cases });
       break;
     }
 
@@ -157,7 +179,8 @@ export async function generateTestCases(
       const response = await ask(buildReviewPrompt(ticket, lastDraftJson, context));
       const parsed = parseAnswer(response.text, response.truncated, ticket.key);
       if (parsed.ok) {
-        cases = parsed.cases;
+        cases = grounded(parsed.cases);
+        modelDetail = parsed.detail ?? modelDetail;
         reviewed = true;
       } else {
         reviewNote = `The review answer was invalid, so the first draft was kept: ${parsed.problems[0]}`;
@@ -179,5 +202,6 @@ export async function generateTestCases(
     usage: tracker.total,
     promptVersion: PROMPT_VERSION,
     model: answeredBy,
+    detail: mergeDetail(assessTicketDetail(ticket), modelDetail),
   };
 }

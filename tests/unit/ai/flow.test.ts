@@ -15,6 +15,11 @@ const makeCase = (id: string, overrides: Partial<TestCase> = {}): TestCase => ({
   priority: 'medium',
   steps: ['Step one'],
   expected: 'Expected result',
+  sources: [],
+  assumptions: [],
+  preconditions: [],
+  depends_on: [],
+  grounding: 'assumed',
   ...overrides,
 });
 

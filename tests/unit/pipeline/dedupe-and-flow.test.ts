@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Flow, TestCase } from '../../../src/ai/schemas.js';
 import { removeCrossTicketDuplicates } from '../../../src/pipeline/dedupe.js';
-import { applyFlow, fallbackFlow } from '../../../src/pipeline/flow.js';
+import { applyFlow, enforceDependencyOrder, fallbackFlow } from '../../../src/pipeline/flow.js';
 
 const testCase = (overrides: Partial<TestCase> = {}): TestCase => ({
   id: 'TC-1',
@@ -12,6 +12,11 @@ const testCase = (overrides: Partial<TestCase> = {}): TestCase => ({
   priority: 'high',
   steps: ['Select orders', 'Click Create'],
   expected: 'One shipment is created per selected order',
+  sources: [],
+  assumptions: [],
+  preconditions: [],
+  depends_on: [],
+  grounding: 'assumed',
   ...overrides,
 });
 
@@ -188,5 +193,112 @@ describe('applyFlow', () => {
     applyFlow(cases, flow);
 
     expect(cases[0]?.flow_step).toBe('Happy path');
+  });
+});
+
+describe('enforceDependencyOrder', () => {
+  const caseWith = (id: string, depends_on: string[] = []) => testCase({ id, depends_on });
+  const step = (order: number, name: string, caseIds: string[]) => ({
+    order,
+    name,
+    description: '',
+    caseIds,
+  });
+
+  it('changes nothing when every case already comes after what it needs', () => {
+    const cases = [caseWith('TC-1'), caseWith('TC-2', ['TC-1'])];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2'])] };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.moved).toEqual([]);
+    expect(result.flow).toEqual(flow);
+    expect(result.cyclic).toBe(false);
+  });
+
+  it('puts a case after its dependency inside the same step', () => {
+    const cases = [caseWith('TC-1', ['TC-2']), caseWith('TC-2')];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2'])] };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.flow.steps[0]?.caseIds).toEqual(['TC-2', 'TC-1']);
+    expect(result.moved).toEqual(['TC-1']);
+  });
+
+  it('moves a case into a later step, right after its dependency', () => {
+    const cases = [
+      caseWith('TC-1', ['TC-3']),
+      caseWith('TC-2'),
+      caseWith('TC-3'),
+      caseWith('TC-4'),
+    ];
+    const flow: Flow = {
+      steps: [step(1, 'Selection', ['TC-1', 'TC-2']), step(2, 'Failures', ['TC-3', 'TC-4'])],
+    };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.flow.steps.map((s) => [s.name, s.caseIds])).toEqual([
+      ['Selection', ['TC-2']],
+      ['Failures', ['TC-3', 'TC-1', 'TC-4']],
+    ]);
+  });
+
+  it('drops a step that becomes empty and renumbers the rest', () => {
+    const cases = [caseWith('TC-1', ['TC-2']), caseWith('TC-2')];
+    const flow: Flow = {
+      steps: [step(1, 'Selection', ['TC-1']), step(2, 'Happy path', ['TC-2'])],
+    };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.flow.steps).toEqual([step(1, 'Happy path', ['TC-2', 'TC-1'])]);
+  });
+
+  it('follows a chain of dependencies', () => {
+    const cases = [caseWith('TC-1', ['TC-2']), caseWith('TC-2', ['TC-3']), caseWith('TC-3')];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2', 'TC-3'])] };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.flow.steps[0]?.caseIds).toEqual(['TC-3', 'TC-2', 'TC-1']);
+  });
+
+  it('waits for the latest of several dependencies', () => {
+    const cases = [caseWith('TC-1', ['TC-2', 'TC-3']), caseWith('TC-2'), caseWith('TC-3')];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2', 'TC-3'])] };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    const order = result.flow.steps[0]?.caseIds ?? [];
+    expect(order.indexOf('TC-1')).toBeGreaterThan(order.indexOf('TC-2'));
+    expect(order.indexOf('TC-1')).toBeGreaterThan(order.indexOf('TC-3'));
+  });
+
+  it('gives up on a circle and says so, without losing any case', () => {
+    const cases = [caseWith('TC-1', ['TC-2']), caseWith('TC-2', ['TC-1'])];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2'])] };
+
+    const result = enforceDependencyOrder(cases, flow);
+
+    expect(result.cyclic).toBe(true);
+    expect([...(result.flow.steps[0]?.caseIds ?? [])].sort()).toEqual(['TC-1', 'TC-2']);
+  });
+
+  it('ignores a dependency on a case that does not exist', () => {
+    const cases = [caseWith('TC-1', ['TC-99'])];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1'])] };
+
+    expect(enforceDependencyOrder(cases, flow).moved).toEqual([]);
+  });
+
+  it('does not change the flow it was given', () => {
+    const cases = [caseWith('TC-1', ['TC-2']), caseWith('TC-2')];
+    const flow: Flow = { steps: [step(1, 'Happy path', ['TC-1', 'TC-2'])] };
+
+    enforceDependencyOrder(cases, flow);
+
+    expect(flow.steps[0]?.caseIds).toEqual(['TC-1', 'TC-2']);
   });
 });

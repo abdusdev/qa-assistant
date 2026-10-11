@@ -144,6 +144,199 @@ describe('runPipeline', () => {
     });
   });
 
+  describe('dependencies', () => {
+    const pair = (first: string, second: string) => [
+      { title: first, expected: `Outcome for ${first}`, flow_step: 'Happy path' },
+      { title: second, expected: `Outcome for ${second}`, flow_step: 'Happy path' },
+    ];
+
+    it('moves a case after the case it depends on', async () => {
+      const ai = scriptedAI({
+        casesFor: () => [
+          {
+            title: 'Apply the saved filter alpha',
+            expected: 'The list shows matching orders',
+            depends_on: ['TC-2'],
+          },
+          { title: 'Create the saved filter beta', expected: 'The filter appears in the list' },
+        ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1'));
+
+      expect(result.cases.map((c) => c.title)).toEqual([
+        'Create the saved filter beta',
+        'Apply the saved filter alpha',
+      ]);
+      expect(result.warnings.join(' ')).toContain('moved after the case they depend on');
+      expect(checkFlow(result.flow, result.cases)).toEqual([]);
+    });
+
+    it('moves a case into the step of its dependency when that step comes later', async () => {
+      const ai = scriptedAI({
+        casesPerTicket: 4,
+        casesFor: () =>
+          ['one', 'two', 'three', 'four'].map((word, i) => ({
+            title: `Case ${word} unique${word}`,
+            expected: `Result ${word} unique${word}`,
+            ...(i === 0 && { depends_on: ['TC-4'] }),
+          })),
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1'));
+
+      const first = result.cases.find((c) => c.title.includes('one'));
+      const last = result.cases.find((c) => c.title.includes('four'));
+      expect(first?.flow_step).toBe(last?.flow_step);
+      expect(result.cases.indexOf(first!)).toBeGreaterThan(result.cases.indexOf(last!));
+      expect(checkFlow(result.flow, result.cases)).toEqual([]);
+    });
+
+    it('turns each ticket’s own dependencies into run-wide numbers', async () => {
+      const ai = scriptedAI({
+        casesFor: (key) => [
+          { title: `Setup for ${key} uniq${key.replace('-', '')}a`, expected: `Setup ok ${key}a` },
+          {
+            title: `Use setup for ${key} uniq${key.replace('-', '')}b`,
+            expected: `Use ok ${key}b`,
+            depends_on: ['TC-1'],
+          },
+        ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1', 'SHP-2'), { buildFlow: false });
+
+      const second = result.cases.find((c) => c.ticket === 'SHP-2' && c.title.startsWith('Use'));
+      const setup = result.cases.find((c) => c.ticket === 'SHP-2' && c.title.startsWith('Setup'));
+      expect(second?.depends_on).toEqual([setup?.id]);
+      const first = result.cases.find((c) => c.ticket === 'SHP-1' && c.title.startsWith('Use'));
+      const firstSetup = result.cases.find(
+        (c) => c.ticket === 'SHP-1' && c.title.startsWith('Setup'),
+      );
+      expect(first?.depends_on).toEqual([firstSetup?.id]);
+    });
+
+    it('points a dependency on a removed duplicate at the case that was kept', async () => {
+      const shared = {
+        title: 'Create shipments for all selected orders',
+        expected: 'One shipment is created per selected order',
+      };
+      const ai = scriptedAI({
+        casesFor: (key) =>
+          key === 'SHP-1'
+            ? [shared]
+            : [
+                shared,
+                {
+                  title: 'Review the created shipments afterwards',
+                  expected: 'Each shipment shows a tracking number',
+                  depends_on: ['TC-1'],
+                },
+              ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1', 'SHP-2'), { buildFlow: false });
+
+      const kept = result.cases.find((c) => c.title === shared.title);
+      const review = result.cases.find((c) => c.title.startsWith('Review'));
+      expect(result.cases.filter((c) => c.title === shared.title)).toHaveLength(1);
+      expect(review?.depends_on).toEqual([kept?.id]);
+    });
+
+    it('leaves cases alone when nothing is out of order', async () => {
+      const ai = scriptedAI({
+        casesFor: () => [
+          { title: 'Create the saved filter gamma', expected: 'The filter is saved' },
+          {
+            title: 'Apply the saved filter delta',
+            expected: 'The list is filtered',
+            depends_on: ['TC-1'],
+          },
+        ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1'));
+
+      expect(result.warnings.join(' ')).not.toContain('moved');
+      expect(result.cases.map((c) => c.title)).toEqual([
+        'Create the saved filter gamma',
+        'Apply the saved filter delta',
+      ]);
+    });
+
+    it('does not hang on cases that depend on each other', async () => {
+      const ai = scriptedAI({
+        casesFor: () => [
+          { ...pair('Chicken alpha', 'Egg beta')[0]!, depends_on: ['TC-2'] },
+          { ...pair('Chicken alpha', 'Egg beta')[1]!, depends_on: ['TC-1'] },
+        ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1'));
+
+      expect(result.cases).toHaveLength(2);
+      expect(result.warnings.join(' ')).toContain('depend on each other in a circle');
+    });
+  });
+
+  describe('grounding and detail', () => {
+    it('counts grounded and assumed cases across the run', async () => {
+      const ai = scriptedAI({
+        casesFor: () => [
+          {
+            title: 'Skipped orders are listed in the summary uniquea',
+            expected: 'Each skipped order is listed with its reason uniquea',
+            sources: [{ from: 'ticket', quote: 'Orders without a rate are skipped' }],
+          },
+          {
+            title: 'Another case with no source at all uniqueb',
+            expected: 'Something happens uniqueb',
+          },
+          {
+            title: 'A case with a real source but a guessed detail uniquec',
+            expected: 'Some limit applies uniquec',
+            sources: [{ from: 'ticket', quote: 'Orders without a rate are skipped' }],
+            assumptions: ['The limit is 100 orders per request'],
+          },
+        ],
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1'));
+
+      expect(result.grounding).toEqual({ grounded: 1, partly: 1, assumed: 1 });
+      expect(result.cases.find((c) => c.grounding === 'grounded')?.sources[0]?.from).toBe('ticket');
+    });
+
+    it('warns about a ticket with too little detail and names what is missing', async () => {
+      const ai = scriptedAI({
+        detailFor: (key) =>
+          key === 'SHP-2'
+            ? { sufficient: false, missing: ['Which filters can be saved is not stated.'] }
+            : undefined,
+      });
+
+      const result = await runPipeline(ai, tickets('SHP-1', 'SHP-2'));
+
+      const warning = result.warnings.find((w) => w.includes('too little detail'));
+      expect(warning).toContain('SHP-2');
+      expect(warning).toContain('Which filters can be saved is not stated.');
+      expect(warning).toContain('assumptions');
+      expect(result.warnings.filter((w) => w.includes('too little detail'))).toHaveLength(1);
+      expect(result.tickets[1]?.detail).toEqual({
+        sufficient: false,
+        missing: ['Which filters can be saved is not stated.'],
+      });
+    });
+
+    it('warns about a nearly empty ticket without the model saying so', async () => {
+      const result = await runPipeline(scriptedAI(), [
+        makeTicket('SHP-1', { description: 'Fix it.' }),
+      ]);
+
+      expect(result.warnings.join(' ')).toContain('SHP-1 has too little detail');
+    });
+  });
+
   describe('daily quota', () => {
     it('stops at once when every model is out and keeps what finished', async () => {
       const out = new AIError(

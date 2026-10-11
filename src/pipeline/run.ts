@@ -7,7 +7,7 @@ import { UsageTracker, type AIProvider, type AIUsage } from '../ai/types.js';
 import type { Ticket } from '../jira/ticket.js';
 import { mapLimit } from '../util/concurrency.js';
 import { removeCrossTicketDuplicates } from './dedupe.js';
-import { applyFlow, fallbackFlow } from './flow.js';
+import { applyFlow, enforceDependencyOrder, fallbackFlow } from './flow.js';
 
 export type ProgressEvent =
   | { type: 'ticket_started'; ticket: string; done: number; total: number }
@@ -56,6 +56,8 @@ export interface TicketOutcome {
   reviewNote?: string;
   /** The model that answered, useful when several models are configured. */
   model?: string;
+  /** Whether the ticket said enough to write reliable cases, and what was missing. */
+  detail?: { sufficient: boolean; missing: string[] };
   error?: string;
 }
 
@@ -68,6 +70,8 @@ export interface PipelineResult {
   /** One entry per input ticket, in input order. */
   tickets: TicketOutcome[];
   warnings: string[];
+  /** Cases fully grounded in the ticket or context, partly grounded, and resting on assumptions. */
+  grounding: { grounded: number; partly: number; assumed: number };
   usage: AIUsage;
   calls: number;
   /** Set only when pricing was given. In US dollars. */
@@ -157,6 +161,7 @@ export async function runPipeline(
         attempts: result.attempts,
         reviewed: result.reviewed,
         model: result.model,
+        detail: result.detail,
         ...(result.reviewNote !== undefined && { reviewNote: result.reviewNote }),
       };
       rateLimitStreak = 0;
@@ -189,6 +194,15 @@ export async function runPipeline(
     warnings.push(
       `${failed.length} of ${total} tickets failed: ${failed.map((o) => o.ticket).join(', ')}.`,
     );
+  }
+  for (const outcome of outcomes) {
+    if (outcome.status === 'ok' && outcome.detail && !outcome.detail.sufficient) {
+      warnings.push(
+        `${outcome.ticket} has too little detail for reliable cases` +
+          (outcome.detail.missing.length > 0 ? `: ${outcome.detail.missing.join(' ')}` : '.') +
+          ' Treat its cases as drafts built on assumptions.',
+      );
+    }
   }
   if (options.generate?.selfReview !== false) {
     const unreviewed = outcomes.filter((o) => o.status === 'ok' && o.reviewed === false);
@@ -226,7 +240,26 @@ export async function runPipeline(
     );
   }
 
-  const numbered = kept.map((c, index) => ({ ...c, id: `TC-${index + 1}` }));
+  // Every case gets its run-wide number. Dependencies point at the new numbers; a dependency
+  // on a case that was removed as a duplicate points at the case that was kept instead.
+  const newId = new Map<TestCase, string>();
+  kept.forEach((c, index) => newId.set(c, `TC-${index + 1}`));
+  for (const { removed: gone, keptInstead } of removed) {
+    const target = newId.get(keptInstead);
+    if (target) newId.set(gone, target);
+  }
+  const byTicketAndId = new Map(merged.map((c) => [`${c.ticket}|${c.id}`, c]));
+
+  const numbered = kept.map((c, index) => {
+    const id = `TC-${index + 1}`;
+    const dependsOn = c.depends_on
+      .map((dep) => {
+        const target = byTicketAndId.get(`${c.ticket}|${dep}`);
+        return target ? newId.get(target) : undefined;
+      })
+      .filter((dep): dep is string => dep !== undefined && dep !== id);
+    return { ...c, id, depends_on: [...new Set(dependsOn)] };
+  });
 
   // The flow: AI first, plain grouping if that fails. Either way every case lands in one step.
   let flow: Flow = { steps: [] };
@@ -269,7 +302,25 @@ export async function runPipeline(
     emit({ type: 'flow_done', source: flowSource === 'ai' ? 'ai' : 'fallback' });
   }
 
+  if (flow.steps.length > 0) {
+    const ordered = enforceDependencyOrder(numbered, flow);
+    flow = ordered.flow;
+    if (ordered.moved.length > 0) {
+      warnings.push(
+        `${ordered.moved.length} case(s) were moved after the case they depend on: ` +
+          `${ordered.moved.join(', ')}.`,
+      );
+    }
+    if (ordered.cyclic) {
+      warnings.push(
+        'Some cases depend on each other in a circle, so their order could not be fixed.',
+      );
+    }
+  }
+
   const cases = applyFlow(numbered, flow);
+  const countOf = (level: TestCase['grounding']) =>
+    cases.filter((c) => c.grounding === level).length;
   emit({ type: 'finished' });
 
   const usage = tracker.total;
@@ -279,6 +330,11 @@ export async function runPipeline(
     flowSource,
     tickets: outcomes,
     warnings,
+    grounding: {
+      grounded: countOf('grounded'),
+      partly: countOf('partly'),
+      assumed: countOf('assumed'),
+    },
     usage,
     calls: tracker.calls,
     ...(options.pricing && { estimatedCostUsd: estimateCost(usage, options.pricing) }),

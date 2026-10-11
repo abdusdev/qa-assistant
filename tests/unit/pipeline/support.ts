@@ -8,7 +8,10 @@ export const makeTicket = (key: string, overrides: Partial<Ticket> = {}): Ticket
   summary: `Summary of ${key}`,
   type: 'Story',
   status: 'Done',
-  description: `Description of ${key}`,
+  description:
+    `Description of ${key}. The seller selects several orders, chooses a courier rate for each one and ` +
+    'creates the shipments in one action. Orders without a rate are skipped, and the result summary lists ' +
+    'every skipped order with the reason so the seller can fix it and try again.',
   labels: [],
   fixVersions: [],
   comments: [],
@@ -20,6 +23,11 @@ export interface CaseSpec {
   expected: string;
   type?: string;
   flow_step?: string;
+  sources?: { from: string; quote: string }[];
+  assumptions?: string[];
+  preconditions?: string[];
+  /** Ids within the ticket's own answer, such as TC-1. */
+  depends_on?: string[];
 }
 
 export interface ScriptOptions {
@@ -33,6 +41,8 @@ export interface ScriptOptions {
   throwFor?: Record<string, AIError>;
   /** These tickets fail only on the self-review call. */
   reviewThrowFor?: Record<string, AIError>;
+  /** The ticket-detail verdict the model gives per ticket. Default: enough detail. */
+  detailFor?: (key: string) => { sufficient: boolean; missing: string[] } | undefined;
   /** What the flow request gets back. Default "ok". */
   flow?: 'ok' | 'incomplete' | 'garbage' | 'throw';
   /** Pretend delay per ticket in milliseconds. */
@@ -60,8 +70,13 @@ function defaultCases(key: string, count: number): CaseSpec[] {
   }));
 }
 
-function casesAnswer(key: string, specs: CaseSpec[]): string {
+function casesAnswer(
+  key: string,
+  specs: CaseSpec[],
+  detail?: { sufficient: boolean; missing: string[] },
+): string {
   return JSON.stringify({
+    ...(detail && { detail }),
     cases: specs.map((spec, i) => ({
       id: `TC-${i + 1}`,
       ticket: key,
@@ -71,6 +86,10 @@ function casesAnswer(key: string, specs: CaseSpec[]): string {
       priority: 'medium',
       steps: ['Do the first thing', 'Do the second thing'],
       expected: spec.expected,
+      ...(spec.sources && { sources: spec.sources }),
+      ...(spec.assumptions && { assumptions: spec.assumptions }),
+      ...(spec.preconditions && { preconditions: spec.preconditions }),
+      ...(spec.depends_on && { depends_on: spec.depends_on }),
     })),
   });
 }
@@ -157,7 +176,7 @@ export function scriptedAI(options: ScriptOptions = {}): ScriptedAI {
         if (options.garbageFor?.includes(key)) return respond('Sorry, I cannot do that.');
 
         const specs = options.casesFor?.(key) ?? defaultCases(key, options.casesPerTicket ?? 2);
-        return respond(casesAnswer(key, specs));
+        return respond(casesAnswer(key, specs, options.detailFor?.(key)));
       } finally {
         inFlight--;
       }

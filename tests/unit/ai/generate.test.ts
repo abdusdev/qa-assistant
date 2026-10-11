@@ -282,6 +282,166 @@ describe('generateTestCases', () => {
     });
   });
 
+  describe('grounding and ticket detail', () => {
+    const detailed: Ticket = {
+      ...ticket,
+      description:
+        'When the seller changes the Ship To address, the old rates stay available and the order can ' +
+        'still be shipped. Shipping must be blocked until new rates are fetched and one is selected. ' +
+        'The seller sees a warning that asks them to fetch new rates before shipping the order.',
+      acceptanceCriteria:
+        '1. Changing the street marks rates as outdated.\n2. Phone changes keep rates.',
+    };
+
+    const withDetail = (detail: unknown, ...cases: Record<string, unknown>[]) =>
+      JSON.stringify({ detail, cases: cases.length > 0 ? cases : [caseJson()] });
+
+    it('verifies the cited source and marks the case grounded', async () => {
+      const reply = answer(
+        caseJson({
+          sources: [
+            { from: 'ticket', quote: 'Shipping must be blocked until new rates are fetched' },
+          ],
+        }),
+      );
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.cases[0]).toMatchObject({
+        grounding: 'grounded',
+        sources: [
+          { from: 'ticket', quote: 'Shipping must be blocked until new rates are fetched' },
+        ],
+        assumptions: [],
+      });
+    });
+
+    it('drops an invented source and lists it, instead of trusting it', async () => {
+      const reply = answer(
+        caseJson({
+          sources: [{ from: 'ticket', quote: 'The seller can export an invoice as PDF' }],
+        }),
+      );
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.cases[0]?.grounding).toBe('assumed');
+      expect(result.cases[0]?.sources).toEqual([]);
+      expect(result.cases[0]?.assumptions[0]).toContain('not in the ticket or context');
+    });
+
+    it('flags a UI label the ticket never mentions', async () => {
+      const reply = answer(
+        caseJson({
+          steps: ['Fetch rates', "Click 'Confirm Save'"],
+          sources: [
+            { from: 'ticket', quote: 'Shipping must be blocked until new rates are fetched' },
+          ],
+        }),
+      );
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.cases[0]?.grounding).toBe('partly');
+      expect(result.cases[0]?.assumptions).toEqual([
+        'The label or message "Confirm Save" is not in the ticket or context. Confirm the exact text.',
+      ]);
+    });
+
+    it('gives the review the checked draft, with its assumptions', async () => {
+      const reply = answer(caseJson({ steps: ['Fetch rates', "Click 'Confirm Save'"] }));
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      await generateTestCases(ai, detailed);
+
+      const review = ai.calls[1]!.prompt;
+      expect(review).toContain('Confirm the exact text');
+    });
+
+    it('fills in the new fields when the model leaves them out', async () => {
+      const ai = new FakeAIProvider({ replies: [answer(), answer()] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.cases[0]).toMatchObject({
+        preconditions: [],
+        depends_on: [],
+        grounding: 'assumed',
+      });
+      expect(result.cases[0]?.assumptions).toContain('No source was given for this case.');
+    });
+
+    it('rewrites dependencies to the new numbers and drops unknown and self references', async () => {
+      const reply = answer(
+        caseJson({
+          id: 'create',
+          title: 'Create a saved filter with a valid name',
+          depends_on: [],
+        }),
+        caseJson({
+          id: 'apply',
+          title: 'Apply the saved filter to the list of orders',
+          depends_on: ['create', 'ghost', 'apply'],
+        }),
+      );
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.cases.map((c) => [c.id, c.depends_on])).toEqual([
+        ['TC-1', []],
+        ['TC-2', ['TC-1']],
+      ]);
+    });
+
+    it('reports the ticket as detailed enough when it is and the model agrees', async () => {
+      const reply = withDetail({ sufficient: true, missing: [] });
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.detail).toEqual({ sufficient: true, missing: [] });
+    });
+
+    it('reports what is missing when the model says the ticket is too vague', async () => {
+      const reply = withDetail({
+        sufficient: false,
+        missing: ['Which fields a saved filter keeps.'],
+      });
+      const ai = new FakeAIProvider({ replies: [reply, reply] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.detail).toEqual({
+        sufficient: false,
+        missing: ['Which fields a saved filter keeps.'],
+      });
+      expect(result.cases).toHaveLength(1);
+    });
+
+    it('flags a nearly empty ticket without needing the model to say so', async () => {
+      const ai = new FakeAIProvider({ replies: [answer(), answer()] });
+
+      const result = await generateTestCases(ai, { ...ticket, description: 'Fix it.' });
+
+      expect(result.detail.sufficient).toBe(false);
+      expect(result.detail.missing).toEqual(['The ticket has almost no description.']);
+    });
+
+    it('keeps the review’s detail verdict when the review answer has one', async () => {
+      const first = withDetail({ sufficient: true, missing: [] });
+      const second = withDetail({ sufficient: false, missing: ['No limits are given.'] });
+      const ai = new FakeAIProvider({ replies: [first, second] });
+
+      const result = await generateTestCases(ai, detailed);
+
+      expect(result.detail.sufficient).toBe(false);
+    });
+  });
+
   describe('injection', () => {
     it('does not let a ticket change the output format', async () => {
       const hostile: Ticket = {

@@ -19,7 +19,14 @@ const validCase = {
 
 describe('testCaseSchema', () => {
   it('accepts a complete case', () => {
-    expect(testCaseSchema.parse(validCase)).toEqual(validCase);
+    expect(testCaseSchema.parse(validCase)).toEqual({
+      ...validCase,
+      sources: [],
+      assumptions: [],
+      preconditions: [],
+      depends_on: [],
+      grounding: 'assumed',
+    });
   });
 
   it('accepts type and priority in any letter case', () => {

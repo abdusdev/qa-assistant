@@ -45,7 +45,10 @@ describe('buildGenerationPrompt', () => {
 
     it('describes the exact output shape', () => {
       expect(system).toContain('JSON only');
-      expect(system).toContain('{"cases":[{"id":"TC-1"');
+      expect(system).toContain('"cases":[{"id":"TC-1"');
+      expect(system).toContain('"sources":[{"from":"ticket"');
+      expect(system).toContain('"assumptions"');
+      expect(system).toContain('"depends_on"');
       expect(system).toContain('"expected"');
     });
 
