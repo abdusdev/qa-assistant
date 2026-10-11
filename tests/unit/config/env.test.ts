@@ -8,7 +8,7 @@ describe('loadConfig', () => {
       env: 'development',
       port: 3000,
       logLevel: 'info',
-      ai: { provider: 'fake', maxOutputTokens: 8192 },
+      ai: { provider: 'fake', maxOutputTokens: 8192, fallbackModels: [] },
     });
   });
 
@@ -81,14 +81,32 @@ describe('loadConfig', () => {
     );
     expect(
       loadConfig({ AI_PROVIDER: 'gemini', AI_API_KEY: 'key', AI_MODEL: 'some-model' }).ai,
-    ).toEqual({ provider: 'gemini', apiKey: 'key', model: 'some-model', maxOutputTokens: 8192 });
+    ).toEqual({
+      provider: 'gemini',
+      apiKey: 'key',
+      model: 'some-model',
+      maxOutputTokens: 8192,
+      fallbackModels: [],
+    });
   });
 
   it('does not need a key or model for the fake provider', () => {
     expect(loadConfig({ AI_PROVIDER: 'fake' }).ai).toEqual({
       provider: 'fake',
       maxOutputTokens: 8192,
+      fallbackModels: [],
     });
+  });
+
+  it('reads the fallback models in order, trimmed and without repeats', () => {
+    const config = loadConfig({
+      AI_PROVIDER: 'gemini',
+      AI_API_KEY: 'key',
+      AI_MODEL: 'model-a',
+      AI_FALLBACK_MODELS: ' model-b, model-c ,model-b,,model-a ',
+    });
+
+    expect(config.ai.fallbackModels).toEqual(['model-b', 'model-c']);
   });
 
   it('reads and bounds the output token cap', () => {

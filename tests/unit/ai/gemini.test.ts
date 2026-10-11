@@ -300,6 +300,72 @@ describe('GeminiProvider', () => {
     });
   });
 
+  describe('daily quota', () => {
+    const dailyLimit = (retryDelay = '43289s') =>
+      googleError(429, 'You exceeded your current quota.', [
+        {
+          '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+          violations: [
+            {
+              quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+              quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+            },
+          ],
+        },
+        { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay },
+      ]);
+
+    it('reports an used-up daily limit as quota_exhausted without retrying', async () => {
+      fetchMock.mockResolvedValueOnce(dailyLimit());
+
+      const error = await rejection(makeProvider().generate({ prompt: 'q' }));
+
+      expect(error).toMatchObject({ kind: 'quota_exhausted', status: 429 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    });
+
+    it('says which model is out and when it resets', async () => {
+      fetchMock.mockResolvedValueOnce(dailyLimit('43289s'));
+
+      const error = (await rejection(makeProvider().generate({ prompt: 'q' }))) as AIError;
+
+      expect(error.message).toContain(`"${MODEL}"`);
+      expect(error.message).toContain('about 12 hour(s)');
+      expect(error.retryAfterMs).toBe(43_289_000);
+    });
+
+    it('still reports quota_exhausted when Google gives no reset time', async () => {
+      fetchMock.mockResolvedValueOnce(
+        googleError(429, 'quota', [
+          { violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] },
+        ]),
+      );
+
+      const error = (await rejection(makeProvider().generate({ prompt: 'q' }))) as AIError;
+
+      expect(error.kind).toBe('quota_exhausted');
+      expect(error.retryAfterMs).toBeUndefined();
+      expect(error.message).not.toContain('resets in');
+    });
+
+    it('keeps retrying a per-minute limit, which does clear quickly', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          googleError(429, 'quota', [
+            { violations: [{ quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' }] },
+            { retryDelay: '20s' },
+          ]),
+        )
+        .mockResolvedValueOnce(json(answer('ok')));
+
+      const response = await makeProvider().generate({ prompt: 'q' });
+
+      expect(response.text).toBe('ok');
+      expect(sleep).toHaveBeenCalledExactlyOnceWith(20_000);
+    });
+  });
+
   describe('retries', () => {
     it('waits for the delay Google reports, then succeeds', async () => {
       fetchMock

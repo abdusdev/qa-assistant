@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "pipeline": "node --env-file-if-exists=.env --import tsx src/pipeline/cli.ts",
     "eval": "node --env-file-if-exists=.env --import tsx src/ai/eval.ts",
     "ai:check": "node --env-file-if-exists=.env --import tsx src/ai/check.ts",
     "jira:check": "node --env-file-if-exists=.env --import tsx src/jira/check.ts",

@@ -14,6 +14,8 @@ export default defineConfig({
         'src/jira/resolve-cli.ts',
         'src/ai/check.ts',
         'src/ai/eval.ts',
+        'src/ai/eval-file.ts',
+        'src/pipeline/cli.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {

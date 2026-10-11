@@ -37,6 +37,7 @@ const envSchema = z
     AI_PROVIDER: withDefault(z.enum(['gemini', 'fake']).default('fake')),
     AI_API_KEY: optional(z.string().min(1)),
     AI_MODEL: optional(z.string().min(1)),
+    AI_FALLBACK_MODELS: optional(z.string().min(1)),
     AI_MAX_OUTPUT_TOKENS: withDefault(z.coerce.number().int().min(256).max(65_536).default(8192)),
 
     GITHUB_TOKEN: optional(z.string().min(1)),
@@ -88,6 +89,8 @@ export interface AppConfig {
     provider: 'gemini' | 'fake';
     apiKey?: string;
     model?: string;
+    /** Models tried in order when the main model runs out of daily quota. */
+    fallbackModels: string[];
     /** Hard cap for the length of every AI answer. */
     maxOutputTokens: number;
   };
@@ -116,7 +119,15 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     env: env.NODE_ENV,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
-    ai: { provider: env.AI_PROVIDER, maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS },
+    ai: {
+      provider: env.AI_PROVIDER,
+      maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
+      fallbackModels: (env.AI_FALLBACK_MODELS ?? '')
+        .split(',')
+        .map((model) => model.trim())
+        .filter((model, index, all) => model !== '' && all.indexOf(model) === index)
+        .filter((model) => model !== env.AI_MODEL),
+    },
   };
 
   if (env.AI_API_KEY !== undefined) config.ai.apiKey = env.AI_API_KEY;

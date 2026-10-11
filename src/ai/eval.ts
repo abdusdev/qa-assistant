@@ -7,58 +7,20 @@
  *
  * The comparison is a rough guide. A person still reads the cases and decides if they are good.
  */
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { z } from 'zod';
 import { ConfigError, loadConfig } from '../config/env.js';
 import { AIError } from './errors.js';
+import { loadEvalFile } from './eval-file.js';
 import { generateTestCases, GenerationError } from './generate.js';
 import { createProvider } from './index.js';
 import type { TestCase } from './schemas.js';
-import { ticketSchema } from '../jira/ticket.js';
+import { similarity } from '../util/similarity.js';
 import { UsageTracker } from './types.js';
 
 const EVALS_DIR = path.resolve('evals', 'tickets');
 const OUT_DIR = path.resolve('out');
 const MATCH_THRESHOLD = 0.35;
-
-const evalFileSchema = z.object({
-  ticket: ticketSchema.extend({
-    url: z.string().default(''),
-    status: z.string().default(''),
-    type: z.string().default(''),
-    description: z.string().default(''),
-    labels: z.array(z.string()).default([]),
-    fixVersions: z.array(z.string()).default([]),
-    comments: ticketSchema.shape.comments.default([]),
-  }),
-  reference: z.array(z.object({ title: z.string(), expected: z.string().default('') })).default([]),
-});
-
-const words = (text: string) =>
-  new Set((text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((w) => !STOP_WORDS.has(w)));
-
-const STOP_WORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'with',
-  'that',
-  'this',
-  'are',
-  'was',
-  'not',
-  'when',
-]);
-
-function similarity(a: string, b: string): number {
-  const left = words(a);
-  const right = words(b);
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const word of left) if (right.has(word)) shared++;
-  return shared / (left.size + right.size - shared);
-}
 
 /** Share of QA's reference cases that have a similar generated case. */
 function referenceRecall(
@@ -95,7 +57,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = createProvider(ai);
+  const provider = createProvider(ai, {
+    onSwitch: (e) =>
+      console.log(
+        `! ${e.from} has used its daily limit. ${e.to ? `Switching to ${e.to}.` : 'No other model is left.'}`,
+      ),
+  });
   const usage = new UsageTracker();
   const report: unknown[] = [];
 
@@ -103,9 +70,7 @@ async function main(): Promise<void> {
   console.log(`Tickets: ${files.length}\n`);
 
   for (const file of files) {
-    const parsed = evalFileSchema.parse(
-      JSON.parse(await readFile(path.join(EVALS_DIR, file), 'utf8')),
-    );
+    const parsed = await loadEvalFile(path.join(EVALS_DIR, file));
     console.log(`== ${file}: ${parsed.ticket.key} ${parsed.ticket.summary}`);
 
     try {

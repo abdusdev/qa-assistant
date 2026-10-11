@@ -65,10 +65,19 @@ const errorBodySchema = z.looseObject({
   error: z
     .looseObject({
       message: z.string().nullish(),
-      details: z.array(z.looseObject({ retryDelay: z.string().nullish() })).nullish(),
+      details: z
+        .array(
+          z.looseObject({
+            retryDelay: z.string().nullish(),
+            violations: z.array(z.looseObject({ quotaId: z.string().nullish() })).nullish(),
+          }),
+        )
+        .nullish(),
     })
     .nullish(),
 });
+
+type ErrorBody = z.infer<typeof errorBodySchema>;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -197,36 +206,66 @@ export class GeminiProvider implements AIProvider {
         }
       }
 
+      const errorBody = await this.readBody(response);
+
+      // A used-up daily limit will not clear in a minute, so retrying only wastes time.
+      if (response.status === 429 && this.isDailyQuota(errorBody)) {
+        throw this.dailyQuotaError(errorBody, response.status);
+      }
+
       const retryable = response.status === 429 || response.status >= 500;
       if (retryable && canRetry) {
-        await this.sleep(await this.retryDelay(response, attempt));
+        await this.sleep(this.retryDelay(response, errorBody, attempt));
         continue;
       }
 
-      throw await this.errorFor(response);
+      throw this.errorFor(response.status, errorBody);
     }
+  }
+
+  private isDailyQuota(body: ErrorBody | undefined): boolean {
+    return (body?.error?.details ?? []).some((detail) =>
+      (detail.violations ?? []).some((violation) => /PerDay/i.test(violation.quotaId ?? '')),
+    );
+  }
+
+  /** The wait Google reports ("23s") in the error details, in milliseconds. */
+  private reportedDelayMs(body: ErrorBody | undefined): number | undefined {
+    for (const item of body?.error?.details ?? []) {
+      const match = /^(\d+(?:\.\d+)?)s$/.exec(item.retryDelay ?? '');
+      if (match?.[1]) return Number(match[1]) * 1000;
+    }
+    return undefined;
+  }
+
+  private dailyQuotaError(body: ErrorBody | undefined, status: number): AIError {
+    const waitMs = this.reportedDelayMs(body);
+    const hours = waitMs === undefined ? undefined : Math.max(1, Math.round(waitMs / 3_600_000));
+    const reset = hours === undefined ? '' : ` It resets in about ${hours} hour(s).`;
+    return new AIError(
+      'quota_exhausted',
+      `The daily request limit for model "${this.model}" has been reached (429).${reset}`,
+      status,
+      waitMs,
+    );
   }
 
   private backoff(attempt: number): number {
     return Math.min(this.baseDelayMs * 2 ** attempt, MAX_RETRY_DELAY_MS);
   }
 
-  private async retryDelay(response: Response, attempt: number): Promise<number> {
+  private retryDelay(response: Response, body: ErrorBody | undefined, attempt: number): number {
     const header = response.headers.get('retry-after');
     if (header !== null && Number.isFinite(Number(header)) && Number(header) >= 0) {
       return Math.min(Number(header) * 1000, MAX_RETRY_DELAY_MS);
     }
 
-    // Google reports the wait as "23s" inside the error details.
-    const detail = await this.readBody(response);
-    for (const item of detail?.error?.details ?? []) {
-      const match = /^(\d+(?:\.\d+)?)s$/.exec(item.retryDelay ?? '');
-      if (match?.[1]) return Math.min(Number(match[1]) * 1000, MAX_RETRY_DELAY_MS);
-    }
+    const reported = this.reportedDelayMs(body);
+    if (reported !== undefined) return Math.min(reported, MAX_RETRY_DELAY_MS);
     return this.backoff(attempt);
   }
 
-  private async readBody(response: Response): Promise<z.infer<typeof errorBodySchema> | undefined> {
+  private async readBody(response: Response): Promise<ErrorBody | undefined> {
     try {
       const parsed = errorBodySchema.safeParse(await response.json());
       return parsed.success ? parsed.data : undefined;
@@ -245,9 +284,7 @@ export class GeminiProvider implements AIProvider {
     return 'unknown network error';
   }
 
-  private async errorFor(response: Response): Promise<AIError> {
-    const status = response.status;
-    const body = await this.readBody(response);
+  private errorFor(status: number, body: ErrorBody | undefined): AIError {
     const detail = this.redact(body?.error?.message ?? '').slice(0, 200);
     const suffix = detail ? ` ${detail}` : '';
 
