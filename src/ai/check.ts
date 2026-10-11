@@ -9,7 +9,12 @@ import { createProvider } from './index.js';
 
 async function main(): Promise<void> {
   const { ai } = loadConfig();
-  const provider = createProvider(ai);
+  const provider = createProvider(ai, {
+    onSwitch: (e) =>
+      console.log(
+        `! ${e.from} has used its daily limit. ${e.to ? `Switching to ${e.to}.` : 'No other model is left.'}`,
+      ),
+  });
 
   console.log(`Provider: ${provider.name}${ai.model ? ` (model: ${ai.model})` : ''}`);
   if (provider.name === 'fake') {

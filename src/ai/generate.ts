@@ -35,6 +35,8 @@ export interface GenerateResult {
   reviewNote?: string;
   usage: AIUsage;
   promptVersion: string;
+  /** The model that answered the last call, which can differ per ticket when models fall back. */
+  model: string;
 }
 
 /** The AI never produced a valid answer within the allowed attempts. */
@@ -106,6 +108,8 @@ export async function generateTestCases(
   const temperature = options.temperature ?? 0.2;
   const tracker = new UsageTracker();
 
+  let answeredBy = '';
+
   const ask = async (built: BuiltPrompt) => {
     const response = await provider.generate({
       system: built.system,
@@ -115,6 +119,7 @@ export async function generateTestCases(
     });
     tracker.add(response.usage);
     options.usage?.add(response.usage);
+    answeredBy = response.model;
     return response;
   };
 
@@ -173,5 +178,6 @@ export async function generateTestCases(
     ...(reviewNote !== undefined && { reviewNote }),
     usage: tracker.total,
     promptVersion: PROMPT_VERSION,
+    model: answeredBy,
   };
 }

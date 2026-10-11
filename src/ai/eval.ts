@@ -57,7 +57,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = createProvider(ai);
+  const provider = createProvider(ai, {
+    onSwitch: (e) =>
+      console.log(
+        `! ${e.from} has used its daily limit. ${e.to ? `Switching to ${e.to}.` : 'No other model is left.'}`,
+      ),
+  });
   const usage = new UsageTracker();
   const report: unknown[] = [];
 

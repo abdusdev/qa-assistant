@@ -54,6 +54,8 @@ export interface TicketOutcome {
   attempts?: number;
   reviewed?: boolean;
   reviewNote?: string;
+  /** The model that answered, useful when several models are configured. */
+  model?: string;
   error?: string;
 }
 
@@ -112,7 +114,7 @@ export async function runPipeline(
   let done = 0;
   let fatal: AIError | undefined;
   let rateLimitStreak = 0;
-  let halted = false;
+  let halted: 'rate_limit' | 'quota' | undefined;
   let cancelled = false;
 
   const emit = (event: ProgressEvent) => {
@@ -154,6 +156,7 @@ export async function runPipeline(
         cases: result.cases.length,
         attempts: result.attempts,
         reviewed: result.reviewed,
+        model: result.model,
         ...(result.reviewNote !== undefined && { reviewNote: result.reviewNote }),
       };
       rateLimitStreak = 0;
@@ -162,9 +165,11 @@ export async function runPipeline(
     } catch (error) {
       if (error instanceof AIError && FATAL_KINDS.has(error.kind)) {
         fatal ??= error;
+      } else if (error instanceof AIError && error.kind === 'quota_exhausted') {
+        halted ??= 'quota'; // every configured model is out for the day: more calls cannot succeed
       } else if (error instanceof AIError && error.kind === 'rate_limited') {
         rateLimitStreak++;
-        if (rateLimitStreak >= maxStreak) halted = true;
+        if (rateLimitStreak >= maxStreak) halted ??= 'rate_limit';
       } else if (error instanceof GenerationError) {
         rateLimitStreak = 0; // the AI answered, so the connection and quota work
       }
@@ -199,8 +204,12 @@ export async function runPipeline(
   if (halted) {
     const skipped = outcomes.filter((o) => o.status === 'skipped').length;
     warnings.push(
-      `The run stopped early after repeated rate-limit errors (${skipped} tickets were not processed). ` +
-        'Wait for the quota to reset, or use a paid tier, and run the remaining tickets again.',
+      halted === 'quota'
+        ? `The run stopped early because every configured AI model has used its daily limit ` +
+            `(${skipped} tickets were not processed). Wait for the reset, add another model to ` +
+            'AI_FALLBACK_MODELS, or use a paid tier, then run the remaining tickets again.'
+        : `The run stopped early after repeated rate-limit errors (${skipped} tickets were not processed). ` +
+            'Wait for the quota to reset, or use a paid tier, and run the remaining tickets again.',
     );
   }
   if (cancelled || options.signal?.aborted) {

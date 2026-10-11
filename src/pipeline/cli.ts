@@ -66,7 +66,12 @@ async function main(): Promise<void> {
   }
 
   const config = loadConfig();
-  const provider = createProvider(config.ai);
+  const provider = createProvider(config.ai, {
+    onSwitch: (e) =>
+      console.log(
+        `! ${e.from} has used its daily limit. ${e.to ? `Switching to ${e.to}.` : 'No other model is left.'}`,
+      ),
+  });
   if (provider.name === 'fake') {
     console.error('AI_PROVIDER is "fake", which gives no real answers. Set AI_PROVIDER=gemini.');
     process.exitCode = 1;

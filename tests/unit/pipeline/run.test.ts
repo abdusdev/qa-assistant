@@ -144,6 +144,40 @@ describe('runPipeline', () => {
     });
   });
 
+  describe('daily quota', () => {
+    it('stops at once when every model is out and keeps what finished', async () => {
+      const out = new AIError(
+        'quota_exhausted',
+        'Every configured model has reached its daily limit.',
+      );
+      const ai = scriptedAI({ throwFor: { 'SHP-3': out, 'SHP-4': out, 'SHP-5': out } });
+
+      const result = await runPipeline(ai, tickets('SHP-1', 'SHP-2', 'SHP-3', 'SHP-4', 'SHP-5'), {
+        concurrency: 1,
+      });
+
+      expect(result.tickets.map((t) => t.status)).toEqual([
+        'ok',
+        'ok',
+        'failed',
+        'skipped',
+        'skipped',
+      ]);
+      expect(result.cases).toHaveLength(4);
+      expect(ai.callsFor('SHP-4')).toBe(0);
+      expect(result.warnings.join(' ')).toContain(
+        'every configured AI model has used its daily limit',
+      );
+      expect(result.warnings.join(' ')).toContain('AI_FALLBACK_MODELS');
+    });
+
+    it('records the model that answered each ticket', async () => {
+      const result = await runPipeline(scriptedAI(), tickets('SHP-1', 'SHP-2'));
+
+      expect(result.tickets.map((t) => t.model)).toEqual(['scripted', 'scripted']);
+    });
+  });
+
   describe('the quality review', () => {
     it('keeps the first draft and says so when the review cannot run', async () => {
       const ai = scriptedAI({
