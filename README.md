@@ -24,21 +24,22 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 
 ## Scripts
 
-| Command                                 | What it does                                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `npm run dev`                           | Start the server with auto-reload                                                                     |
-| `npm start`                             | Start the server                                                                                      |
-| `npm test`                              | Run unit tests (Vitest)                                                                               |
-| `npm run test:coverage`                 | Run unit tests with the 80% coverage threshold                                                        |
-| `npm run test:e2e`                      | Run end-to-end tests (Playwright)                                                                     |
-| `npm run lint`                          | Lint the code                                                                                         |
-| `npm run format`                        | Format the code (`format:check` only checks)                                                          |
-| `npm run typecheck`                     | Type-check the code                                                                                   |
-| `npm run check`                         | Everything CI runs: lint, format, types, unit and e2e                                                 |
-| `npm run ai:check`                      | Make one tiny call to the AI provider set in `.env` and print the answer and token use                |
-| `npm run jira:check`                    | Check that the Jira settings in `.env` work (who you are, can you see the project)                    |
-| `npm run jira:resolve -- epic SHP-4110` | Resolve an input (ticket, list, sprint, epic, release) to tickets, with `--type`, `--status`, `--max` |
-| `npm run jira:ticket -- SHP-1234`       | Print a Jira ticket as the AI will see it (needs Jira settings in `.env`)                             |
+| Command                                 | What it does                                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                           | Start the server with auto-reload                                                                          |
+| `npm start`                             | Start the server                                                                                           |
+| `npm test`                              | Run unit tests (Vitest)                                                                                    |
+| `npm run test:coverage`                 | Run unit tests with the 80% coverage threshold                                                             |
+| `npm run test:e2e`                      | Run end-to-end tests (Playwright)                                                                          |
+| `npm run lint`                          | Lint the code                                                                                              |
+| `npm run format`                        | Format the code (`format:check` only checks)                                                               |
+| `npm run typecheck`                     | Type-check the code                                                                                        |
+| `npm run check`                         | Everything CI runs: lint, format, types, unit and e2e                                                      |
+| `npm run eval`                          | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI) |
+| `npm run ai:check`                      | Make one tiny call to the AI provider set in `.env` and print the answer and token use                     |
+| `npm run jira:check`                    | Check that the Jira settings in `.env` work (who you are, can you see the project)                         |
+| `npm run jira:resolve -- epic SHP-4110` | Resolve an input (ticket, list, sprint, epic, release) to tickets, with `--type`, `--status`, `--max`      |
+| `npm run jira:ticket -- SHP-1234`       | Print a Jira ticket as the AI will see it (needs Jira settings in `.env`)                                  |
 
 First time running the end-to-end tests: `npx playwright install chromium`.
 

@@ -1,0 +1,36 @@
+{
+  "ticket": {
+    "key": "EVAL-1",
+    "summary": "Bulk shipment creation for selected orders",
+    "type": "Story",
+    "status": "Done",
+    "description": "As a seller I can select several orders on the Orders page and create shipments for all of them in one action.\n\nRules:\n- At most 100 orders can be selected for one bulk action. Selecting more shows an error and nothing is created.\n- Each order uses the courier rate that was selected for it. Orders without a selected rate are skipped.\n- Orders whose Ship To address is invalid are skipped and listed in a result summary with the reason.\n- When the courier service is unavailable, no shipment is created for the failed orders and the seller can retry them.\n- After the action, a summary shows how many shipments were created and how many were skipped or failed.",
+    "acceptanceCriteria": "1. Selecting 1 to 100 orders and clicking Create shipments creates one shipment per eligible order.\n2. Selecting 101 orders shows the error \"You can create shipments for up to 100 orders at a time\" and creates nothing.\n3. Orders with no selected rate or an invalid address are skipped and appear in the summary with a reason.\n4. A courier outage leaves failed orders without shipments and shows a Retry action."
+  },
+  "reference": [
+    {
+      "title": "Create shipments for several selected orders with rates",
+      "expected": "One shipment is created per selected order and the summary shows the count"
+    },
+    {
+      "title": "Create shipments for exactly 100 selected orders",
+      "expected": "All 100 shipments are created"
+    },
+    {
+      "title": "Select 101 orders and try to create shipments",
+      "expected": "The error about the 100 order limit is shown and nothing is created"
+    },
+    {
+      "title": "Order without a selected rate is skipped",
+      "expected": "The order is skipped and listed in the summary with the reason"
+    },
+    {
+      "title": "Order with an invalid Ship To address is skipped",
+      "expected": "The order is skipped and listed in the summary with the reason"
+    },
+    {
+      "title": "Courier service is unavailable during bulk creation",
+      "expected": "No shipment is created for failed orders and a Retry action is available"
+    }
+  ]
+}
