@@ -52,3 +52,70 @@ export function applyFlow(cases: TestCase[], flow: Flow): TestCase[] {
   }
   return ordered;
 }
+
+/**
+ * Makes sure no case comes before a case it depends on.
+ * A case that is too early is moved into the step of its dependency, right after it,
+ * so "apply a saved filter" never sits before "save a filter".
+ * Returns the ids that were moved, and gives up (leaving the flow as it is) on a cycle.
+ */
+export function enforceDependencyOrder(
+  cases: TestCase[],
+  flow: Flow,
+): { flow: Flow; moved: string[]; cyclic: boolean } {
+  const steps = [...flow.steps]
+    .sort((a, b) => a.order - b.order)
+    .map((step) => ({ ...step, caseIds: [...step.caseIds] }));
+  const known = new Set(cases.map((c) => c.id));
+  const dependencies = new Map(
+    cases.map((c) => [c.id, c.depends_on.filter((dep) => known.has(dep) && dep !== c.id)]),
+  );
+
+  const locate = (id: string) => {
+    for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+      const index = steps[stepIndex]?.caseIds.indexOf(id) ?? -1;
+      if (index !== -1) return { stepIndex, index };
+    }
+    return undefined;
+  };
+
+  const moved = new Set<string>();
+  const limit = cases.length * cases.length + 1;
+  let cyclic = false;
+
+  for (let pass = 0; ; pass++) {
+    let changed = false;
+
+    outer: for (const [id, deps] of dependencies) {
+      for (const dep of deps) {
+        const at = locate(id);
+        const depAt = locate(dep);
+        if (!at || !depAt) continue;
+
+        const tooEarly =
+          at.stepIndex < depAt.stepIndex ||
+          (at.stepIndex === depAt.stepIndex && at.index < depAt.index);
+        if (!tooEarly) continue;
+
+        (steps[at.stepIndex] as (typeof steps)[number]).caseIds.splice(at.index, 1);
+        const target = steps[depAt.stepIndex] as (typeof steps)[number];
+        const after = target.caseIds.indexOf(dep);
+        target.caseIds.splice(after + 1, 0, id);
+        moved.add(id);
+        changed = true;
+        break outer;
+      }
+    }
+
+    if (!changed) break;
+    if (pass >= limit) {
+      cyclic = true;
+      break;
+    }
+  }
+
+  const kept = steps
+    .filter((step) => step.caseIds.length > 0)
+    .map((step, index) => ({ ...step, order: index + 1 }));
+  return { flow: { steps: kept }, moved: [...moved], cyclic };
+}

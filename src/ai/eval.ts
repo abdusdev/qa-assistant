@@ -90,8 +90,18 @@ async function main(): Promise<void> {
         for (const title of recall.missed) console.log(`   - not covered: ${title}`);
       }
       if (result.reviewNote) console.log(`   note: ${result.reviewNote}`);
+      const countOf = (level: string) => result.cases.filter((c) => c.grounding === level).length;
+      const assumptionCount = result.cases.reduce((sum, c) => sum + c.assumptions.length, 0);
+      console.log(
+        `   grounded: ${countOf('grounded')}, partly: ${countOf('partly')}, assumed: ${countOf('assumed')} ` +
+          `| assumptions listed: ${assumptionCount}`,
+      );
+      if (!result.detail.sufficient) {
+        console.log(`   ticket detail: too little. ${result.detail.missing.join(' ')}`);
+      }
       for (const c of result.cases) {
-        console.log(`   ${c.id} [${c.type}/${c.priority}] ${c.flow_step}: ${c.title}`);
+        const mark = c.grounding;
+        console.log(`   ${c.id} [${c.type}/${c.priority}] (${mark}) ${c.flow_step}: ${c.title}`);
       }
 
       report.push({

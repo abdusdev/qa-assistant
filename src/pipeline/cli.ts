@@ -163,7 +163,13 @@ async function main(): Promise<void> {
     console.log(`${step.order}. ${step.name}${step.description ? ` - ${step.description}` : ''}`);
     for (const id of step.caseIds) {
       const c = result.cases.find((testCase) => testCase.id === id);
-      if (c) console.log(`     ${c.id} [${c.type}/${c.priority}] ${c.ticket}: ${c.title}`);
+      if (c) {
+        const mark =
+          c.grounding === 'grounded'
+            ? 'grounded'
+            : `${c.grounding}, ${c.assumptions.length} to confirm`;
+        console.log(`     ${c.id} [${c.type}/${c.priority}] (${mark}) ${c.ticket}: ${c.title}`);
+      }
     }
   }
 
@@ -174,7 +180,9 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `\n${result.cases.length} cases from ${result.tickets.filter((t) => t.status === 'ok').length} of ` +
+    `\n${result.cases.length} cases: ${result.grounding.grounded} grounded, ` +
+      `${result.grounding.partly} partly grounded, ${result.grounding.assumed} assumed | ` +
+      `from ${result.tickets.filter((t) => t.status === 'ok').length} of ` +
       `${result.tickets.length} tickets | ${result.calls} AI calls | ${result.usage.totalTokens} tokens | ` +
       `${(result.durationMs / 1000).toFixed(1)} s`,
   );

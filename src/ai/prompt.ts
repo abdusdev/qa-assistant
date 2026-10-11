@@ -2,7 +2,7 @@ import type { Ticket } from '../jira/ticket.js';
 import { DEFAULT_FLOW_STEPS } from './schemas.js';
 
 /** Stored with every run, so a result can be traced to the instructions that produced it. */
-export const PROMPT_VERSION = 'v1';
+export const PROMPT_VERSION = 'v2';
 
 /** Extra context for a ticket. Filled by the knowledge and GitHub issues; optional until then. */
 export interface PromptContext {
@@ -88,8 +88,11 @@ function formatComments(ticket: Ticket): string | undefined {
 const FLOW_STEP_LIST = DEFAULT_FLOW_STEPS.join(', ');
 
 const OUTPUT_EXAMPLE =
-  '{"cases":[{"id":"TC-1","ticket":"<the ticket key>","flow_step":"Happy path",' +
-  '"title":"...","type":"ui","priority":"high","steps":["...","..."],"expected":"..."}]}';
+  '{"detail":{"sufficient":true,"missing":[]},"cases":[{"id":"TC-1","ticket":"<the ticket key>",' +
+  '"flow_step":"Happy path","title":"...","type":"ui","priority":"high",' +
+  '"preconditions":["..."],"steps":["...","..."],"expected":"...",' +
+  '"sources":[{"from":"ticket","quote":"<short exact excerpt>"}],' +
+  '"assumptions":["..."],"depends_on":[]}]}';
 
 function systemPrompt(productKnowledge?: string): string {
   const parts = [
@@ -118,6 +121,25 @@ function systemPrompt(productKnowledge?: string): string {
       '- priority: "high" when money, shipping correctness or data safety is affected, "medium" for ' +
         'normal functionality, "low" for cosmetic or rare cases.',
       '- Write 4 to 12 cases for a normal ticket: fewer for a tiny change, more only for a large one.',
+    ].join('\n'),
+    [
+      '## Grounding',
+      'QA must be able to tell what is stated from what you guessed.',
+      '- "sources": for every case, list where it comes from. "from" is one of ticket, ' +
+        'acceptance_criteria, comment, module_notes, past_cases, code_changes or inferred. "quote" is a ' +
+        'short excerpt (under 150 characters) copied exactly from that part. Use "inferred" with an ' +
+        'empty quote when the case is ordinary QA practice that the text does not state.',
+      '- "assumptions": list everything you had to assume to write the case, such as data, limits, ' +
+        'screens or behaviour the text does not give. Use an empty list only when nothing was assumed.',
+      '- Never put a button name, field name, menu name or message text in quotes unless it appears ' +
+        'in the ticket or the context. Describe it generically instead, for example "the save ' +
+        'confirmation" or "a validation error about the empty name".',
+      '- "preconditions": the setup and test data needed before the steps, such as "101 orders, each ' +
+        'with a selected rate". Give numbers from the ticket when it has them.',
+      '- "depends_on": ids of cases in your list that must run first. A case that uses something ' +
+        'another case creates depends on that case.',
+      '- "detail": set "sufficient" to false and list in "missing" what is unclear when the ticket ' +
+        'does not say enough to write reliable cases. Still write the cases you can.',
     ].join('\n'),
     [
       '## Security',
@@ -209,6 +231,9 @@ export function buildReviewPrompt(
         '- duplicate or near-duplicate cases (merge them)',
         '- cases that test something the ticket does not mention (remove them)',
         '- steps that are not concrete actions',
+        '- button names, labels or messages in quotes that are not in the ticket or the context (describe them generically)',
+        '- a case that uses something another case creates but does not list it in depends_on',
+        '- missing or wrong "sources" and "assumptions": every case needs them, and sources must be exact excerpts',
         'Keep what is already good. Number the ids TC-1, TC-2, ... again.',
         'Reply with the full corrected JSON object only, in the same shape.',
       ].join('\n'),
@@ -224,6 +249,8 @@ export interface FlowPromptCase {
   priority: string;
   flow_step: string;
   title: string;
+  /** Ids of cases that must run before this one. */
+  depends_on?: string[];
 }
 
 const FLOW_EXAMPLE =
@@ -244,6 +271,7 @@ function flowSystemPrompt(): string {
         'rename or drop a case.',
       '- Give each step a short name and a one-sentence description.',
       '- Keep cases of the same ticket and the same behaviour next to each other inside a step.',
+      '- A case marked "runs after" another must come after that case, in the same step or a later one.',
       '- The "suggested step" of each case is only a hint. Change it when the overall flow reads better.',
     ].join('\n'),
     [
@@ -264,7 +292,8 @@ function flowSystemPrompt(): string {
 export function buildFlowPrompt(cases: FlowPromptCase[]): BuiltPrompt {
   const lines = cases.map(
     (c) =>
-      `${c.id} | ${c.ticket} | ${c.type}/${c.priority} | suggested step: ${c.flow_step} | ${c.title}`,
+      `${c.id} | ${c.ticket} | ${c.type}/${c.priority} | suggested step: ${c.flow_step} | ${c.title}` +
+      (c.depends_on && c.depends_on.length > 0 ? ` | runs after: ${c.depends_on.join(', ')}` : ''),
   );
 
   return {
