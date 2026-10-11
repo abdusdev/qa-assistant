@@ -34,9 +34,10 @@ const envSchema = z
     JIRA_AC_FIELD: optional(z.string().min(1)),
     JIRA_ENABLE_RELEASE: withDefault(z.stringbool().default(false)),
 
-    AI_PROVIDER: withDefault(z.enum(['claude', 'fake']).default('fake')),
+    AI_PROVIDER: withDefault(z.enum(['gemini', 'fake']).default('fake')),
     AI_API_KEY: optional(z.string().min(1)),
     AI_MODEL: optional(z.string().min(1)),
+    AI_MAX_OUTPUT_TOKENS: withDefault(z.coerce.number().int().min(256).max(65_536).default(8192)),
 
     GITHUB_TOKEN: optional(z.string().min(1)),
     GITHUB_REPOS: optional(z.string().min(1)),
@@ -57,12 +58,16 @@ const envSchema = z
       }
     }
 
-    if (env.AI_PROVIDER === 'claude' && env.AI_API_KEY === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['AI_API_KEY'],
-        message: 'Required when AI_PROVIDER is "claude"',
-      });
+    if (env.AI_PROVIDER === 'gemini') {
+      for (const key of ['AI_API_KEY', 'AI_MODEL'] as const) {
+        if (env[key] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'Required when AI_PROVIDER is "gemini"',
+          });
+        }
+      }
     }
   });
 
@@ -80,9 +85,11 @@ export interface AppConfig {
     enableRelease: boolean;
   };
   ai: {
-    provider: 'claude' | 'fake';
+    provider: 'gemini' | 'fake';
     apiKey?: string;
     model?: string;
+    /** Hard cap for the length of every AI answer. */
+    maxOutputTokens: number;
   };
   github?: {
     token: string;
@@ -109,7 +116,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     env: env.NODE_ENV,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
-    ai: { provider: env.AI_PROVIDER },
+    ai: { provider: env.AI_PROVIDER, maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS },
   };
 
   if (env.AI_API_KEY !== undefined) config.ai.apiKey = env.AI_API_KEY;

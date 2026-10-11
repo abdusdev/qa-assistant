@@ -8,7 +8,7 @@ describe('loadConfig', () => {
       env: 'development',
       port: 3000,
       logLevel: 'info',
-      ai: { provider: 'fake' },
+      ai: { provider: 'fake', maxOutputTokens: 8192 },
     });
   });
 
@@ -73,12 +73,29 @@ describe('loadConfig', () => {
     }
   });
 
-  it('requires an API key when the real AI provider is chosen', () => {
-    expect(() => loadConfig({ AI_PROVIDER: 'claude' })).toThrow(/AI_API_KEY/);
-    expect(loadConfig({ AI_PROVIDER: 'claude', AI_API_KEY: 'key' }).ai).toEqual({
-      provider: 'claude',
-      apiKey: 'key',
+  it('requires an API key and a model when the real AI provider is chosen', () => {
+    expect(() => loadConfig({ AI_PROVIDER: 'gemini' })).toThrow(/AI_API_KEY[\s\S]*AI_MODEL/);
+    expect(() => loadConfig({ AI_PROVIDER: 'gemini', AI_API_KEY: 'key' })).toThrow(/AI_MODEL/);
+    expect(() => loadConfig({ AI_PROVIDER: 'gemini', AI_MODEL: 'some-model' })).toThrow(
+      /AI_API_KEY/,
+    );
+    expect(
+      loadConfig({ AI_PROVIDER: 'gemini', AI_API_KEY: 'key', AI_MODEL: 'some-model' }).ai,
+    ).toEqual({ provider: 'gemini', apiKey: 'key', model: 'some-model', maxOutputTokens: 8192 });
+  });
+
+  it('does not need a key or model for the fake provider', () => {
+    expect(loadConfig({ AI_PROVIDER: 'fake' }).ai).toEqual({
+      provider: 'fake',
+      maxOutputTokens: 8192,
     });
+  });
+
+  it('reads and bounds the output token cap', () => {
+    expect(loadConfig({ AI_MAX_OUTPUT_TOKENS: '4000' }).ai.maxOutputTokens).toBe(4000);
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '10' })).toThrow(/AI_MAX_OUTPUT_TOKENS/);
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '9999999' })).toThrow(/AI_MAX_OUTPUT_TOKENS/);
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: 'lots' })).toThrow(/AI_MAX_OUTPUT_TOKENS/);
   });
 
   it('rejects an invalid port and an unknown provider', () => {

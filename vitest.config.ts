@@ -12,6 +12,7 @@ export default defineConfig({
         'src/jira/cli.ts',
         'src/jira/check.ts',
         'src/jira/resolve-cli.ts',
+        'src/ai/check.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {
