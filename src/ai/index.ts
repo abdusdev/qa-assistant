@@ -30,3 +30,22 @@ export function createProvider(config: AppConfig['ai']): AIProvider {
     }
   }
 }
+export { generateTestCases, GenerationError } from './generate.js';
+export type { GenerateOptions, GenerateResult } from './generate.js';
+export { extractJson, JsonExtractionError } from './json.js';
+export {
+  buildGenerationPrompt,
+  buildRepairPrompt,
+  buildReviewPrompt,
+  neutralizeTags,
+  PROMPT_VERSION,
+} from './prompt.js';
+export type { BuiltPrompt, PromptContext } from './prompt.js';
+export {
+  checkFlow,
+  DEFAULT_FLOW_STEPS,
+  flowSchema,
+  generatedCasesSchema,
+  testCaseSchema,
+} from './schemas.js';
+export type { Flow, FlowStep, TestCase } from './schemas.js';
