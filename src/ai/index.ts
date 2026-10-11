@@ -49,3 +49,7 @@ export {
   testCaseSchema,
 } from './schemas.js';
 export type { Flow, FlowStep, TestCase } from './schemas.js';
+export { FlowError, generateFlow } from './flow.js';
+export type { FlowOptions, FlowResult } from './flow.js';
+export { buildFlowPrompt } from './prompt.js';
+export type { FlowPromptCase } from './prompt.js';

@@ -1,0 +1,280 @@
+import { AIError } from '../ai/errors.js';
+import { FlowError, generateFlow } from '../ai/flow.js';
+import { generateTestCases, GenerationError, type GenerateOptions } from '../ai/generate.js';
+import { PROMPT_VERSION, type PromptContext } from '../ai/prompt.js';
+import type { Flow, TestCase } from '../ai/schemas.js';
+import { UsageTracker, type AIProvider, type AIUsage } from '../ai/types.js';
+import type { Ticket } from '../jira/ticket.js';
+import { mapLimit } from '../util/concurrency.js';
+import { removeCrossTicketDuplicates } from './dedupe.js';
+import { applyFlow, fallbackFlow } from './flow.js';
+
+export type ProgressEvent =
+  | { type: 'ticket_started'; ticket: string; done: number; total: number }
+  | { type: 'ticket_done'; ticket: string; cases: number; done: number; total: number }
+  | { type: 'ticket_failed'; ticket: string; error: string; done: number; total: number }
+  | { type: 'ticket_skipped'; ticket: string; reason: string; done: number; total: number }
+  | { type: 'flow_started'; cases: number }
+  | { type: 'flow_done'; source: 'ai' | 'fallback' }
+  | { type: 'finished' };
+
+export interface Pricing {
+  /** Price in US dollars per million input tokens. */
+  inputPerMillion: number;
+  /** Price in US dollars per million output tokens. */
+  outputPerMillion: number;
+}
+
+export interface PipelineOptions {
+  /** Tickets processed at the same time. Default 3. */
+  concurrency?: number;
+  /** Passed to every ticket's generation: retries, self-review, temperature. */
+  generate?: Pick<GenerateOptions, 'maxRetries' | 'selfReview' | 'temperature'>;
+  /** Looks up extra context per ticket: module notes, past cases, code changes. */
+  contextFor?: (ticket: Ticket) => PromptContext | Promise<PromptContext>;
+  onProgress?: (event: ProgressEvent) => void;
+  /** Aborting stops new tickets from starting. Finished work is kept. */
+  signal?: AbortSignal;
+  /** Set false to skip the AI flow step and group by each case's own step. */
+  buildFlow?: boolean;
+  /** Cross-ticket duplicates at or above this similarity are removed. Default 0.8. */
+  duplicateThreshold?: number;
+  /** Above this many cases the flow is grouped without the AI. Default 300. */
+  maxCasesForAiFlow?: number;
+  /** Stop the run after this many rate-limit failures in a row. Default 3. */
+  maxConsecutiveRateLimits?: number;
+  /** Used to estimate the cost of the run. */
+  pricing?: Pricing;
+}
+
+export interface TicketOutcome {
+  ticket: string;
+  status: 'ok' | 'failed' | 'skipped';
+  cases: number;
+  attempts?: number;
+  reviewed?: boolean;
+  reviewNote?: string;
+  error?: string;
+}
+
+export interface PipelineResult {
+  /** Cases numbered TC-1..n across the run, ordered by the flow. */
+  cases: TestCase[];
+  flow: Flow;
+  /** Where the flow came from: the AI, the grouping fallback, or none (no cases). */
+  flowSource: 'ai' | 'fallback' | 'none';
+  /** One entry per input ticket, in input order. */
+  tickets: TicketOutcome[];
+  warnings: string[];
+  usage: AIUsage;
+  calls: number;
+  /** Set only when pricing was given. In US dollars. */
+  estimatedCostUsd?: number;
+  promptVersion: string;
+  cancelled: boolean;
+  durationMs: number;
+}
+
+const FATAL_KINDS = new Set(['unauthorized', 'model_not_found']);
+
+export function estimateCost(usage: AIUsage, pricing: Pricing): number {
+  return (
+    (usage.inputTokens * pricing.inputPerMillion + usage.outputTokens * pricing.outputPerMillion) /
+    1_000_000
+  );
+}
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Turns tickets into test cases and one ordered flow.
+ *
+ * - tickets run in parallel up to a limit, and one failing ticket never stops the others
+ * - a broken AI connection (bad key, unknown model) stops the run at once and throws
+ * - repeated rate-limit failures stop the run, and the finished tickets are kept
+ * - cases are de-duplicated across tickets and numbered TC-1..n over the whole run
+ * - the flow comes from the AI, or from a plain grouping when the AI cannot produce a sound one
+ */
+export async function runPipeline(
+  provider: AIProvider,
+  tickets: Ticket[],
+  options: PipelineOptions = {},
+): Promise<PipelineResult> {
+  const started = Date.now();
+  const tracker = new UsageTracker();
+  const warnings: string[] = [];
+  const total = tickets.length;
+  const maxStreak = Math.max(1, options.maxConsecutiveRateLimits ?? 3);
+
+  const outcomes = new Array<TicketOutcome>(total);
+  const casesByTicket: TestCase[][] = tickets.map(() => []);
+
+  let done = 0;
+  let fatal: AIError | undefined;
+  let rateLimitStreak = 0;
+  let halted = false;
+  let cancelled = false;
+
+  const emit = (event: ProgressEvent) => {
+    try {
+      options.onProgress?.(event);
+    } catch {
+      // A broken progress listener must never break the run.
+    }
+  };
+
+  const skip = (index: number, ticket: Ticket, reason: string) => {
+    outcomes[index] = { ticket: ticket.key, status: 'skipped', cases: 0, error: reason };
+    done++;
+    emit({ type: 'ticket_skipped', ticket: ticket.key, reason, done, total });
+  };
+
+  await mapLimit(tickets, options.concurrency ?? 3, async (ticket, index) => {
+    if (options.signal?.aborted) {
+      cancelled = true;
+      return skip(index, ticket, 'The run was cancelled.');
+    }
+    if (fatal) return skip(index, ticket, 'Skipped: the AI connection is not working.');
+    if (halted) return skip(index, ticket, 'Skipped: the AI rate limit or quota was reached.');
+
+    emit({ type: 'ticket_started', ticket: ticket.key, done, total });
+
+    try {
+      const context = (await options.contextFor?.(ticket)) ?? {};
+      const result = await generateTestCases(provider, ticket, {
+        ...options.generate,
+        context,
+        usage: tracker,
+      });
+
+      casesByTicket[index] = result.cases;
+      outcomes[index] = {
+        ticket: ticket.key,
+        status: 'ok',
+        cases: result.cases.length,
+        attempts: result.attempts,
+        reviewed: result.reviewed,
+        ...(result.reviewNote !== undefined && { reviewNote: result.reviewNote }),
+      };
+      rateLimitStreak = 0;
+      done++;
+      emit({ type: 'ticket_done', ticket: ticket.key, cases: result.cases.length, done, total });
+    } catch (error) {
+      if (error instanceof AIError && FATAL_KINDS.has(error.kind)) {
+        fatal ??= error;
+      } else if (error instanceof AIError && error.kind === 'rate_limited') {
+        rateLimitStreak++;
+        if (rateLimitStreak >= maxStreak) halted = true;
+      } else if (error instanceof GenerationError) {
+        rateLimitStreak = 0; // the AI answered, so the connection and quota work
+      }
+
+      const message = messageOf(error);
+      outcomes[index] = { ticket: ticket.key, status: 'failed', cases: 0, error: message };
+      done++;
+      emit({ type: 'ticket_failed', ticket: ticket.key, error: message, done, total });
+    }
+  });
+
+  // A wrong key or model fails every ticket the same way, so report it instead of a pile of failures.
+  if (fatal) throw fatal;
+
+  const failed = outcomes.filter((o) => o.status === 'failed');
+  if (failed.length > 0) {
+    warnings.push(
+      `${failed.length} of ${total} tickets failed: ${failed.map((o) => o.ticket).join(', ')}.`,
+    );
+  }
+  if (options.generate?.selfReview !== false) {
+    const unreviewed = outcomes.filter((o) => o.status === 'ok' && o.reviewed === false);
+    if (unreviewed.length > 0) {
+      const reason = unreviewed[0]?.reviewNote?.replace(/^The review [^:]*: /, '') ?? '';
+      warnings.push(
+        `The quality review did not complete for ${unreviewed.length} ticket(s), so their first ` +
+          `drafts were kept: ${unreviewed.map((o) => o.ticket).join(', ')}. ` +
+          (reason ? `Reason: ${reason.slice(0, 160)}` : ''),
+      );
+    }
+  }
+  if (halted) {
+    const skipped = outcomes.filter((o) => o.status === 'skipped').length;
+    warnings.push(
+      `The run stopped early after repeated rate-limit errors (${skipped} tickets were not processed). ` +
+        'Wait for the quota to reset, or use a paid tier, and run the remaining tickets again.',
+    );
+  }
+  if (cancelled || options.signal?.aborted) {
+    cancelled = true;
+    warnings.push('The run was cancelled. Tickets finished before that are kept.');
+  }
+
+  // Merge in ticket order (not completion order), then remove repeats across tickets.
+  const merged = casesByTicket.flat();
+  const { kept, removed } = removeCrossTicketDuplicates(merged, options.duplicateThreshold ?? 0.8);
+  for (const { removed: gone, keptInstead } of removed) {
+    warnings.push(
+      `Left out "${gone.title}" (${gone.ticket}): near-duplicate of "${keptInstead.title}" (${keptInstead.ticket}).`,
+    );
+  }
+
+  const numbered = kept.map((c, index) => ({ ...c, id: `TC-${index + 1}` }));
+
+  // The flow: AI first, plain grouping if that fails. Either way every case lands in one step.
+  let flow: Flow = { steps: [] };
+  let flowSource: PipelineResult['flowSource'] = 'none';
+
+  if (numbered.length > 0) {
+    emit({ type: 'flow_started', cases: numbered.length });
+    const maxForAi = options.maxCasesForAiFlow ?? 300;
+    let useFallback = false;
+
+    if (options.buildFlow === false) {
+      useFallback = true;
+    } else if (options.signal?.aborted) {
+      useFallback = true;
+    } else if (numbered.length > maxForAi) {
+      useFallback = true;
+      warnings.push(
+        `${numbered.length} cases is too many for the AI to order in one pass, so they were ` +
+          'grouped by their own flow step instead.',
+      );
+    } else {
+      try {
+        const result = await generateFlow(provider, numbered, { usage: tracker });
+        flow = result.flow;
+        flowSource = 'ai';
+      } catch (error) {
+        if (!(error instanceof FlowError || error instanceof AIError)) throw error;
+        useFallback = true;
+        warnings.push(
+          `The AI could not order the flow (${error.message}) so the cases were grouped by ` +
+            'their own flow step instead.',
+        );
+      }
+    }
+
+    if (useFallback) {
+      flow = fallbackFlow(numbered);
+      flowSource = 'fallback';
+    }
+    emit({ type: 'flow_done', source: flowSource === 'ai' ? 'ai' : 'fallback' });
+  }
+
+  const cases = applyFlow(numbered, flow);
+  emit({ type: 'finished' });
+
+  const usage = tracker.total;
+  return {
+    cases,
+    flow,
+    flowSource,
+    tickets: outcomes,
+    warnings,
+    usage,
+    calls: tracker.calls,
+    ...(options.pricing && { estimatedCostUsd: estimateCost(usage, options.pricing) }),
+    promptVersion: PROMPT_VERSION,
+    cancelled,
+    durationMs: Date.now() - started,
+  };
+}
