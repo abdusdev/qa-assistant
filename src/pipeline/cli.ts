@@ -7,6 +7,8 @@
  *
  * Options: --type A,B  --status A,B  --max N  --concurrency N  --no-review
  *          --allow-real-tickets  (needed to send real Jira tickets to Gemini)
+ *          --code-context        also read each ticket's pull requests from GitHub
+ *          --allow-code-to-ai    (needed with --code-context: source code goes to the AI provider)
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -20,7 +22,9 @@ import { resolveInput, type InputMode } from '../jira/resolver.js';
 import type { Ticket } from '../jira/ticket.js';
 import { PROMPT_VERSION } from '../ai/prompt.js';
 import { createTicketCache, migrate, openDatabase, Repository, type Db } from '../db/index.js';
+import { CodeContextProvider, GitHubClient, GitHubError } from '../github/index.js';
 import { buildKnowledgeContext, loadKnowledge, type Knowledge } from '../knowledge/index.js';
+import { combineContexts } from './context.js';
 import { runPipeline } from './run.js';
 
 const JIRA_MODES: InputMode[] = ['ticket', 'list', 'sprint', 'epic', 'release'];
@@ -79,6 +83,34 @@ async function main(): Promise<void> {
     console.error('AI_PROVIDER is "fake", which gives no real answers. Set AI_PROVIDER=gemini.');
     process.exitCode = 1;
     return;
+  }
+
+  // Code is more sensitive than ticket text, so it has its own switch and its own consent.
+  let codeContext: CodeContextProvider | undefined;
+  if (flags.has('code-context')) {
+    if (!flags.has('allow-code-to-ai')) {
+      console.error(
+        '--code-context would send ShipNest source code (pull request changes) to the AI provider.\n' +
+          'On the free Gemini tier, Google may use that content to improve its products and ' +
+          'reviewers may read it.\nGet approval or use the paid tier, then add --allow-code-to-ai.\n' +
+          'To see exactly what would be sent first, run: npm run github -- context <TICKET-KEY>',
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (!config.github) {
+      console.error('Set GITHUB_TOKEN and GITHUB_REPOS in .env first.');
+      process.exitCode = 1;
+      return;
+    }
+    if (config.github.repos.length === 0) {
+      console.error('Set GITHUB_REPOS in .env (owner/name, comma-separated) first.');
+      process.exitCode = 1;
+      return;
+    }
+    codeContext = new CodeContextProvider(new GitHubClient({ token: config.github.token }), {
+      repos: config.github.repos,
+    });
   }
 
   let tickets: Ticket[] = [];
@@ -154,6 +186,7 @@ async function main(): Promise<void> {
     const filled =
       Boolean(knowledge.overview || knowledge.glossary || knowledge.standards) ||
       knowledge.modules.length > 0 ||
+      (knowledge.codeNotes?.length ?? 0) > 0 ||
       knowledge.pastCases.length > 0;
     console.log(
       filled
@@ -197,8 +230,12 @@ async function main(): Promise<void> {
   const result = await runPipeline(provider, tickets, {
     ...(concurrency !== undefined && { concurrency }),
     ...(cache && { cache }),
-    ...(knowledge && {
-      contextFor: (ticket: Ticket) => buildKnowledgeContext(knowledge, ticket),
+    ...((knowledge || codeContext) && {
+      contextFor: async (ticket: Ticket) =>
+        combineContexts({
+          knowledge: knowledge && buildKnowledgeContext(knowledge, ticket),
+          code: codeContext && (await codeContext.contextFor(ticket)),
+        }),
     }),
     generate: { selfReview },
     onProgress: (event) => {
@@ -272,7 +309,12 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof ConfigError || error instanceof AIError || error instanceof JiraError) {
+  if (
+    error instanceof ConfigError ||
+    error instanceof AIError ||
+    error instanceof JiraError ||
+    error instanceof GitHubError
+  ) {
     console.error(error.message);
   } else {
     console.error(error);

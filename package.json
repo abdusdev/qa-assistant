@@ -19,6 +19,8 @@
     "pipeline": "node --env-file-if-exists=.env --import tsx src/pipeline/cli.ts",
     "eval": "node --env-file-if-exists=.env --import tsx src/ai/eval.ts",
     "knowledge": "node --env-file-if-exists=.env --import tsx src/knowledge/cli.ts",
+    "github": "node --env-file-if-exists=.env --import tsx src/github/cli.ts",
+    "digest": "node --env-file-if-exists=.env --import tsx src/github/digest-cli.ts",
     "db": "node --env-file-if-exists=.env --import tsx src/db/cli.ts",
     "ai:check": "node --env-file-if-exists=.env --import tsx src/ai/check.ts",
     "jira:check": "node --env-file-if-exists=.env --import tsx src/jira/check.ts",

@@ -37,6 +37,8 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 | `npm run check`                                                     | Everything CI runs: lint, format, types, unit and e2e                                                      |
 | `npm run pipeline -- file evals/tickets/example-bulk-shipment.json` | Run the whole pipeline by hand: tickets in, cases and flow out                                             |
 | `npm run knowledge -- check`                                        | Check the knowledge folder (also `match SHP-1234`, `import-cases file.csv`, `components`)                  |
+| `npm run github -- context SHP-1234`                                | Show the pull request code text that would be sent for a ticket (no AI call; also `check`, `find`)         |
+| `npm run digest -- list app_2/src/modules`                          | Draft code overviews of modules for review (also `plan`, `generate`; needs `--allow-code-to-ai`)           |
 | `npm run db -- migrate`                                             | Create or update the database tables (also `status`, `rollback`, `purge`, `runs`)                          |
 | `npm run eval`                                                      | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI) |
 | `npm run ai:check`                                                  | Make one tiny call to the AI provider set in `.env` and print the answer and token use                     |
@@ -68,6 +70,21 @@ First time running the end-to-end tests: `npx playwright install chromium`.
 The AI writes better cases when it knows the product. Put the product overview, glossary, module notes and
 approved past cases in `knowledge/` (see `knowledge/README.md`). Until those files are filled in, it works from
 the ticket alone. `npm run knowledge -- check` shows what is missing.
+
+## Code context
+
+The AI can also see what changed in the code for a ticket. It finds the pull requests that mention the ticket key
+(title, branch name or description), drops lockfiles, generated and private files, replaces anything that looks
+like a secret, and adds the changed lines and the pull request description to the prompt.
+
+1. Set `GITHUB_TOKEN` (a read-only token) and `GITHUB_REPOS` (`owner/name`, comma-separated) in `.env`.
+2. `npm run github -- check` confirms the token can read the repositories.
+3. `npm run github -- context SHP-1234` prints exactly the code text that would be sent. It makes no AI call.
+4. `npm run pipeline -- ... --code-context --allow-code-to-ai` uses it. Source code goes to the AI provider, so the
+   second flag is required: on the free Gemini tier Google may use that content. Get approval or use the paid tier.
+
+A ticket with no pull request is generated from its own text, with a warning. A code overview of a whole module
+can be drafted with `npm run digest` and is used only after a person has reviewed it (see `knowledge/README.md`).
 
 ## Database
 

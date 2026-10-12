@@ -48,7 +48,10 @@ const SOURCE_ALIASES: Record<string, SourceKind> = {
 /** Reads "Acceptance criteria", "description" and the like. Anything unknown counts as inferred. */
 const sourceKind = (value: unknown): unknown => {
   if (typeof value !== 'string') return 'inferred';
-  const key = value.trim().toLowerCase().replace(/[s-]+/g, '_');
+  const key = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
   return SOURCE_ALIASES[key] ?? key;
 };
 

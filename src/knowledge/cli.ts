@@ -57,6 +57,7 @@ async function check(dir: string): Promise<void> {
     const key = pastCase.module ?? '(no module)';
     byModule.set(key, (byModule.get(key) ?? 0) + 1);
   }
+  console.log(`  code overviews ${knowledge.codeNotes?.length ?? 0} reviewed`);
   console.log(`  past cases    ${knowledge.pastCases.length}`);
   for (const [module, count] of byModule) console.log(`    - ${module}: ${count}`);
 

@@ -16,6 +16,8 @@ export interface PromptContext {
   codeChanges?: string;
   /** What was chosen and why. For QA and the logs: never put into the prompt. */
   meta?: unknown;
+  /** Things QA should know about this ticket's context (no pull request found...). Never put into the prompt. */
+  warnings?: string[];
 }
 
 export interface BuiltPrompt {
@@ -28,6 +30,8 @@ const MAX_CRITERIA_CHARS = 6_000;
 const MAX_COMMENTS = 15;
 const MAX_COMMENT_CHARS = 1_500;
 const MAX_CONTEXT_CHARS = 8_000;
+/** Code changes get more room than notes: a diff is only useful with its names and values intact. */
+export const MAX_CODE_CHARS = 12_000;
 const MAX_PREVIOUS_ANSWER_CHARS = 4_000;
 
 /** Tags that wrap data in the prompt. Text inside them must never be able to close them. */
@@ -96,7 +100,19 @@ const OUTPUT_EXAMPLE =
   '"sources":[{"from":"ticket","quote":"<short exact excerpt>"}],' +
   '"assumptions":["..."],"depends_on":[]}]}';
 
-function systemPrompt(productKnowledge?: string): string {
+/** The code guidance is added only when there are code changes, so other prompts stay as they were. */
+const CODE_GUIDANCE = [
+  '## Code changes',
+  'The <code_changes> block shows the pull request(s) built for this ticket: the real change.',
+  '- Use it to get exact names, labels, messages, limits, validation rules and states right, and to ' +
+    'cover behaviour the ticket forgot to mention.',
+  '- Lines starting with + were added and lines starting with - were removed: a removed line is no ' +
+    'longer true. Unchanged code is not shown, so do not assume what you cannot see.',
+  '- Write cases about what a user or an API client sees, never about the code itself, and use ' +
+    '"code_changes" as the source when a case rests on it.',
+].join('\n');
+
+function systemPrompt(productKnowledge?: string, hasCodeChanges = false): string {
   const parts = [
     'You are a senior QA engineer writing test cases for ShipNest, a web platform that connects ' +
       'e-commerce stores (Shopify, Amazon, Temu and others) with couriers (FedEx, PostEx and others).',
@@ -107,6 +123,8 @@ function systemPrompt(productKnowledge?: string): string {
   if (productKnowledge?.trim()) {
     parts.push(`## Product knowledge\n${truncate(productKnowledge.trim(), MAX_CONTEXT_CHARS * 2)}`);
   }
+
+  if (hasCodeChanges) parts.push(CODE_GUIDANCE);
 
   parts.push(
     [
@@ -171,7 +189,7 @@ function contextBlocks(context: PromptContext): string[] {
     blocks.push(block('past_cases', truncate(context.pastCases.join('\n\n'), MAX_CONTEXT_CHARS)));
   }
   if (context.codeChanges?.trim()) {
-    blocks.push(block('code_changes', truncate(context.codeChanges.trim(), MAX_CONTEXT_CHARS)));
+    blocks.push(block('code_changes', truncate(context.codeChanges.trim(), MAX_CODE_CHARS)));
   }
   return blocks;
 }
@@ -191,7 +209,10 @@ export function buildGenerationPrompt(ticket: Ticket, context: PromptContext = {
     `Reply with the JSON object only. Every case must have "ticket": "${attr(ticket.key)}".`,
   ];
 
-  return { system: systemPrompt(context.productKnowledge), prompt: sections.join('\n\n') };
+  return {
+    system: systemPrompt(context.productKnowledge, Boolean(context.codeChanges?.trim())),
+    prompt: sections.join('\n\n'),
+  };
 }
 
 /** Builds the repair request after an answer was rejected, quoting what was wrong. */

@@ -127,6 +127,85 @@ describe('loadKnowledge', () => {
     expect((await loadKnowledge(dir)).pastCases[0]?.module).toBe('Orders');
   });
 
+  describe('code overviews', () => {
+    const overview = (reviewed: string) =>
+      `---\nname: Shipments\nreviewed: ${reviewed}\ncomponents: [Shipments]\n---\n` +
+      '<!-- AI-generated draft. Check it. -->\n### Purpose\n- Creates shipments for orders.\n' +
+      '<!--\nFiles read (1):\n- src/a.ts\n-->';
+
+    it('uses an overview a person has reviewed, without its comments', async () => {
+      const dir = await folder({ 'codebase/shipments.md': overview('true') });
+
+      const knowledge = await loadKnowledge(dir);
+
+      expect(knowledge.codeNotes).toHaveLength(1);
+      expect(knowledge.codeNotes?.[0]).toMatchObject({
+        id: 'shipments',
+        name: 'Shipments',
+        components: ['Shipments'],
+        body: '### Purpose\n- Creates shipments for orders.',
+      });
+      expect(knowledge.warnings).toEqual([
+        'overview.md was not found in ' + dir + '.',
+        'glossary.md was not found in ' + dir + '.',
+        'standards.md was not found in ' + dir + '.',
+      ]);
+    });
+
+    it('accepts "yes" and any letter case as reviewed', async () => {
+      const dir = await folder({
+        'codebase/a.md': overview('YES'),
+        'codebase/b.md': overview('True'),
+      });
+
+      expect((await loadKnowledge(dir)).codeNotes).toHaveLength(2);
+    });
+
+    it('does not use a draft, and says what to do', async () => {
+      const dir = await folder({
+        'codebase/shipments.md': overview('false'),
+        'codebase/orders.md': overview('nope'),
+      });
+
+      const knowledge = await loadKnowledge(dir);
+
+      expect(knowledge.codeNotes).toEqual([]);
+      expect(knowledge.warnings).toContain(
+        'codebase/shipments.md is a draft that nobody has reviewed, so it is not used. ' +
+          'Check it against the code, then set "reviewed: true".',
+      );
+      expect(knowledge.warnings.filter((w) => w.startsWith('codebase/'))).toHaveLength(2);
+    });
+
+    it('treats a file without a reviewed line as a draft', async () => {
+      const dir = await folder({
+        'codebase/shipments.md': '---\nname: Shipments\n---\n### Purpose\n- Creates shipments.',
+      });
+
+      expect((await loadKnowledge(dir)).codeNotes).toEqual([]);
+    });
+
+    it('ignores templates and the README in the folder', async () => {
+      const dir = await folder({
+        'codebase/_template.md': overview('true'),
+        'codebase/README.md': overview('true'),
+      });
+
+      const knowledge = await loadKnowledge(dir);
+
+      expect(knowledge.codeNotes).toEqual([]);
+      expect(knowledge.warnings.filter((w) => w.startsWith('codebase/'))).toEqual([]);
+    });
+
+    it('skips a reviewed overview with nothing in it', async () => {
+      const dir = await folder({
+        'codebase/shipments.md': '---\nreviewed: true\n---\n<!-- nothing yet -->',
+      });
+
+      expect((await loadKnowledge(dir)).codeNotes).toEqual([]);
+    });
+  });
+
   it('skips past cases without an expected result and says so', async () => {
     const dir = await folder({
       'past-cases/orders.md':

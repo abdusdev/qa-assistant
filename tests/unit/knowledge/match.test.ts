@@ -240,6 +240,92 @@ describe('buildKnowledgeContext', () => {
   });
 });
 
+describe('code overviews in the context', () => {
+  const overview = module({
+    id: 'shipments-code',
+    name: 'Shipments',
+    components: ['Shipments'],
+    body: '### Validation rules and limits\n- A shipment needs a selected rate.',
+    file: 'knowledge/codebase/shipments.md',
+  });
+  const other = module({
+    id: 'orders-code',
+    name: 'Orders',
+    components: ['Orders'],
+    body: '### Purpose\n- Lists orders.',
+    file: 'knowledge/codebase/orders.md',
+  });
+  const knowledge: Knowledge = {
+    modules: [shipments],
+    codeNotes: [other, overview],
+    pastCases: [],
+    warnings: [],
+    files: [],
+  };
+  const ticket = makeTicket('SHP-9', { components: ['Shipments'], summary: 'Reprint the label' });
+
+  it('adds the matching overview after the module note, under its own heading', () => {
+    const context = buildKnowledgeContext(knowledge, ticket);
+
+    expect(context.moduleNotes).toContain('## Module: Shipments');
+    expect(context.moduleNotes).toContain('## Code overview: Shipments');
+    expect(context.moduleNotes).toContain('A shipment needs a selected rate.');
+    expect(context.moduleNotes).not.toContain('Lists orders.');
+    expect(context.moduleNotes?.indexOf('## Module:')).toBeLessThan(
+      context.moduleNotes?.indexOf('## Code overview:') ?? -1,
+    );
+  });
+
+  it('adds only one overview by default, the best match, and reports it', () => {
+    const both = makeTicket('SHP-9', {
+      components: ['Shipments', 'Orders'],
+      summary: 'Shipments page shows the wrong label',
+    });
+
+    const context = buildKnowledgeContext(knowledge, both);
+
+    expect(context.moduleNotes?.match(/## Code overview:/g)).toHaveLength(1);
+    expect(context.meta.codeNotes).toMatchObject([{ name: 'Shipments' }]);
+    expect(context.meta.codeNotes?.[0]?.reasons).toContain('component "Shipments"');
+  });
+
+  it('can add more overviews when asked', () => {
+    const both = makeTicket('SHP-9', { components: ['Shipments', 'Orders'] });
+
+    const context = buildKnowledgeContext(knowledge, both, { maxCodeNotes: 2 });
+
+    expect(context.moduleNotes?.match(/## Code overview:/g)).toHaveLength(2);
+  });
+
+  it('works when only an overview matches, and leaves the report unchanged without any', () => {
+    const onlyCode: Knowledge = { ...knowledge, modules: [] };
+    const without: Knowledge = { ...knowledge, codeNotes: [] };
+
+    expect(buildKnowledgeContext(onlyCode, ticket).moduleNotes).toContain('## Code overview');
+    expect(buildKnowledgeContext(without, ticket).meta).not.toHaveProperty('codeNotes');
+  });
+
+  it('is used for the grounding of a case that quotes it', async () => {
+    const ai = scriptedAI({
+      casesFor: () => [
+        {
+          title: 'A shipment needs a rate',
+          expected: 'Shipping is blocked without a selected rate',
+          sources: [{ from: 'module_notes', quote: 'A shipment needs a selected rate.' }],
+          assumptions: [],
+        },
+      ],
+    });
+
+    const result = await runPipeline(ai, [ticket], {
+      contextFor: (t) => buildKnowledgeContext(knowledge, t),
+    });
+
+    expect(result.cases[0]?.sources[0]?.from).toBe('module_notes');
+    expect(result.cases[0]?.grounding).toBe('grounded');
+  });
+});
+
 describe('knowledge in a pipeline run', () => {
   const knowledge: Knowledge = {
     overview: 'ShipNest connects online stores with couriers so sellers can ship orders.',

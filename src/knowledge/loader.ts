@@ -21,6 +21,8 @@ export interface Knowledge {
   glossary?: string;
   standards?: string;
   modules: ModuleNote[];
+  /** Overviews of the code written by the digest generator and checked by a person. */
+  codeNotes?: ModuleNote[];
   pastCases: PastCase[];
   /** Things QA should know: missing or unfilled files, files that could not be read. */
   warnings: string[];
@@ -65,10 +67,17 @@ async function listMarkdown(dir: string): Promise<string[]> {
  *   overview.md, glossary.md, standards.md   fixed context for every ticket
  *   modules/*.md                             one note per module, chosen per ticket
  *   past-cases/*.md                          approved cases, a few chosen per ticket
+ *   codebase/*.md                            code overviews; used only once "reviewed: true"
  * Missing or unfilled files give warnings. Nothing here ever throws for a missing file.
  */
 export async function loadKnowledge(dir = 'knowledge'): Promise<Knowledge> {
-  const knowledge: Knowledge = { modules: [], pastCases: [], warnings: [], files: [] };
+  const knowledge: Knowledge = {
+    modules: [],
+    codeNotes: [],
+    pastCases: [],
+    warnings: [],
+    files: [],
+  };
 
   const fixed = async (name: 'overview' | 'glossary' | 'standards') => {
     const file = path.join(dir, `${name}.md`);
@@ -115,6 +124,36 @@ export async function loadKnowledge(dir = 'knowledge'): Promise<Knowledge> {
       });
     } catch (error) {
       knowledge.warnings.push(`modules/${name} could not be read: ${(error as Error).message}`);
+    }
+  }
+
+  for (const name of await listMarkdown(path.join(dir, 'codebase'))) {
+    const file = path.join(dir, 'codebase', name);
+    try {
+      const { data, body } = parseFrontMatter(await readFile(file, 'utf8'));
+      knowledge.files.push(file);
+      const reviewed = ['true', 'yes'].includes((asText(data.reviewed) ?? '').toLowerCase());
+      if (!reviewed) {
+        knowledge.warnings.push(
+          `codebase/${name} is a draft that nobody has reviewed, so it is not used. ` +
+            'Check it against the code, then set "reviewed: true".',
+        );
+        continue;
+      }
+      const text = stripComments(body);
+      if (text.length < MIN_FILLED_CHARS) continue;
+      const id = name.replace(/\.md$/i, '');
+      knowledge.codeNotes?.push({
+        id,
+        name: asText(data.name) ?? titleCase(id),
+        components: asList(data.components),
+        labels: asList(data.labels),
+        keywords: asList(data.keywords),
+        body: text,
+        file,
+      });
+    } catch (error) {
+      knowledge.warnings.push(`codebase/${name} could not be read: ${(error as Error).message}`);
     }
   }
 
