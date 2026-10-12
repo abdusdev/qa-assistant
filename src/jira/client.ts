@@ -36,6 +36,7 @@ const BASE_FIELDS = [
   'fixVersions',
   'comment',
   'updated',
+  'components',
 ];
 
 const named = z.looseObject({ name: z.string() });
@@ -51,6 +52,7 @@ const rawIssueSchema = z.looseObject({
     parent: z.looseObject({ key: z.string() }).nullish(),
     labels: z.array(z.string()).nullish(),
     fixVersions: z.array(named).nullish(),
+    components: z.array(named).nullish(),
     comment: z
       .looseObject({
         comments: z
@@ -257,6 +259,10 @@ export class JiraClient {
       ...(acceptanceCriteria !== '' && { acceptanceCriteria }),
       ...(fields.parent && { parentKey: fields.parent.key }),
       ...(fields.updated && { updated: fields.updated }),
+      ...(fields.components &&
+        fields.components.length > 0 && {
+          components: fields.components.map((component) => component.name),
+        }),
       labels: fields.labels ?? [],
       fixVersions: (fields.fixVersions ?? []).map((version) => version.name),
       comments: (fields.comment?.comments ?? []).map((comment) => ({

@@ -80,7 +80,7 @@ describe('JiraClient', () => {
       const requested = new URL(String(url));
       expect(requested.origin + requested.pathname).toBe(`${BASE_URL}/rest/api/3/issue/SHP-4085`);
       expect(requested.searchParams.get('fields')).toBe(
-        'summary,description,status,issuetype,parent,labels,fixVersions,comment,updated',
+        'summary,description,status,issuetype,parent,labels,fixVersions,comment,updated,components',
       );
 
       const headers = init?.headers as Record<string, string>;
@@ -112,6 +112,30 @@ describe('JiraClient', () => {
           },
         ],
       });
+    });
+
+    it('reads the Jira components and when the ticket last changed', async () => {
+      fetchMock.mockResolvedValueOnce(
+        json(
+          issueBody({
+            components: [{ name: 'Shipments' }, { name: 'Rates' }],
+            updated: '2026-10-09T12:01:58.485+0100',
+          }),
+        ),
+      );
+
+      const ticket = await makeClient().getIssue('SHP-4085');
+
+      expect(ticket.components).toEqual(['Shipments', 'Rates']);
+      expect(ticket.updated).toBe('2026-10-09T12:01:58.485+0100');
+    });
+
+    it('leaves components out when the ticket has none', async () => {
+      fetchMock.mockResolvedValueOnce(json(issueBody({ components: [] })));
+
+      const ticket = await makeClient().getIssue('SHP-4085');
+
+      expect(ticket).not.toHaveProperty('components');
     });
 
     it('reads acceptance criteria from the configured custom field', async () => {
@@ -441,6 +465,7 @@ describe('JiraClient', () => {
           'fixVersions',
           'comment',
           'updated',
+          'components',
         ],
         maxResults: 100,
       });
