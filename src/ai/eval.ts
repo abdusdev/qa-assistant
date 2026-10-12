@@ -16,6 +16,7 @@ import { generateTestCases, GenerationError } from './generate.js';
 import { createProvider } from './index.js';
 import type { TestCase } from './schemas.js';
 import { similarity } from '../util/similarity.js';
+import { buildKnowledgeContext, loadKnowledge } from '../knowledge/index.js';
 import { UsageTracker } from './types.js';
 
 const EVALS_DIR = path.resolve('evals', 'tickets');
@@ -46,7 +47,34 @@ async function main(): Promise<void> {
     return;
   }
 
-  const filter = process.argv[2]?.toLowerCase();
+  const args = process.argv.slice(2);
+  const flagAt = (name: string) => args.indexOf(`--${name}`);
+  const knowledgeIndex = flagAt('knowledge');
+  const knowledgeDir =
+    knowledgeIndex >= 0 && args[knowledgeIndex + 1]
+      ? (args[knowledgeIndex + 1] as string)
+      : 'knowledge';
+  const skipKnowledge = flagAt('no-knowledge') >= 0;
+  const filter = args
+    .filter((arg, index) => !arg.startsWith('--') && args[index - 1] !== '--knowledge')[0]
+    ?.toLowerCase();
+
+  // With knowledge, the same tickets can be run before and after to see what it changes.
+  const loaded = skipKnowledge ? undefined : await loadKnowledge(knowledgeDir);
+  const knowledge =
+    loaded &&
+    (loaded.overview ||
+      loaded.glossary ||
+      loaded.standards ||
+      loaded.modules.length > 0 ||
+      loaded.pastCases.length > 0)
+      ? loaded
+      : undefined;
+  console.log(
+    knowledge
+      ? `Knowledge: ${knowledgeDir} (${knowledge.modules.length} module note(s), ${knowledge.pastCases.length} past case(s))`
+      : 'Knowledge: none (the AI works from the ticket alone)',
+  );
   const files = (await readdir(EVALS_DIR))
     .filter((name) => name.endsWith('.json'))
     .filter((name) => !filter || name.toLowerCase().includes(filter))
@@ -74,7 +102,17 @@ async function main(): Promise<void> {
     console.log(`== ${file}: ${parsed.ticket.key} ${parsed.ticket.summary}`);
 
     try {
-      const result = await generateTestCases(provider, parsed.ticket, { usage });
+      const context = knowledge ? buildKnowledgeContext(knowledge, parsed.ticket) : undefined;
+      if (context) {
+        const modules = context.meta.modules.map((m) => m.name).join(', ') || 'none';
+        console.log(
+          `   knowledge: modules ${modules}; past cases ${context.meta.pastCases.length}`,
+        );
+      }
+      const result = await generateTestCases(provider, parsed.ticket, {
+        usage,
+        ...(context && { context }),
+      });
       const recall = referenceRecall(parsed.reference, result.cases);
 
       const byStep = new Map<string, number>();

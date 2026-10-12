@@ -20,6 +20,7 @@ import { resolveInput, type InputMode } from '../jira/resolver.js';
 import type { Ticket } from '../jira/ticket.js';
 import { PROMPT_VERSION } from '../ai/prompt.js';
 import { createTicketCache, migrate, openDatabase, Repository, type Db } from '../db/index.js';
+import { buildKnowledgeContext, loadKnowledge, type Knowledge } from '../knowledge/index.js';
 import { runPipeline } from './run.js';
 
 const JIRA_MODES: InputMode[] = ['ticket', 'list', 'sprint', 'epic', 'release'];
@@ -144,6 +145,27 @@ async function main(): Promise<void> {
 
   const selfReview = !flags.has('no-review');
 
+  // Product knowledge, module notes and past cases for each ticket.
+  let knowledge: Knowledge | undefined;
+  if (!flags.has('no-knowledge')) {
+    const knowledgeFlag = flags.get('knowledge');
+    const dir = typeof knowledgeFlag === 'string' ? knowledgeFlag : 'knowledge';
+    knowledge = await loadKnowledge(dir);
+    const filled =
+      Boolean(knowledge.overview || knowledge.glossary || knowledge.standards) ||
+      knowledge.modules.length > 0 ||
+      knowledge.pastCases.length > 0;
+    console.log(
+      filled
+        ? `Knowledge (${dir}): ${knowledge.modules.length} module note(s), ` +
+            `${knowledge.pastCases.length} past case(s)
+`
+        : `Knowledge (${dir}) is empty, so the AI works from the ticket alone. See knowledge/README.md.
+`,
+    );
+    if (!filled) knowledge = undefined;
+  }
+
   // With DATABASE_URL set, the run is saved and unchanged tickets are not sent to the AI again.
   let db: Db | undefined;
   let repo: Repository | undefined;
@@ -175,6 +197,9 @@ async function main(): Promise<void> {
   const result = await runPipeline(provider, tickets, {
     ...(concurrency !== undefined && { concurrency }),
     ...(cache && { cache }),
+    ...(knowledge && {
+      contextFor: (ticket: Ticket) => buildKnowledgeContext(knowledge, ticket),
+    }),
     generate: { selfReview },
     onProgress: (event) => {
       if (event.type === 'ticket_done') {

@@ -1,0 +1,5 @@
+- One purpose per case, with a title that says what is checked and under which condition.
+- Steps are short concrete actions. The expected result is one checkable statement with exact values.
+- Cover the happy path, boundaries, validation, failures, permissions and regression.
+- Use the product's own names for screens, buttons and messages, exactly as they appear. Never invent one.
+- High priority: money, shipping correctness, data safety. Medium: normal functionality. Low: cosmetic.

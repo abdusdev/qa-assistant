@@ -14,6 +14,8 @@ export interface PromptContext {
   pastCases?: string[];
   /** What changed in the code for this ticket (issue #10). */
   codeChanges?: string;
+  /** What was chosen and why. For QA and the logs: never put into the prompt. */
+  meta?: unknown;
 }
 
 export interface BuiltPrompt {

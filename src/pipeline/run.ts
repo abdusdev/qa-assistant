@@ -72,6 +72,8 @@ export interface TicketOutcome {
   model?: string;
   /** True when the cases came from an earlier run and the AI was not called. */
   cached?: boolean;
+  /** What knowledge and context was chosen for this ticket, when the caller reports it. */
+  context?: unknown;
   /** Whether the ticket said enough to write reliable cases, and what was missing. */
   detail?: { sufficient: boolean; missing: string[] };
   error?: string;
@@ -173,6 +175,7 @@ export async function runPipeline(
           status: 'ok',
           cases: hit.cases.length,
           cached: true,
+          ...(context.meta !== undefined && { context: context.meta }),
           model: hit.model,
           detail: hit.detail,
         };
@@ -205,6 +208,7 @@ export async function runPipeline(
         cases: result.cases.length,
         attempts: result.attempts,
         reviewed: result.reviewed,
+        ...(context.meta !== undefined && { context: context.meta }),
         model: result.model,
         detail: result.detail,
         ...(result.reviewNote !== undefined && { reviewNote: result.reviewNote }),

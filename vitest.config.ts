@@ -19,6 +19,7 @@ export default defineConfig({
         'src/ai/eval-file.ts',
         'src/pipeline/cli.ts',
         'src/db/cli.ts',
+        'src/knowledge/cli.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {

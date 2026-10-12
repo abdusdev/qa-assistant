@@ -19,6 +19,8 @@ export const ticketSchema = z.object({
   updated: z.string().optional(),
   parentKey: z.string().optional(),
   labels: z.array(z.string()),
+  /** Jira components, used to pick the matching module notes. */
+  components: z.array(z.string()).optional(),
   fixVersions: z.array(z.string()),
   comments: z.array(ticketCommentSchema),
 });
