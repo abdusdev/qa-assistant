@@ -214,3 +214,48 @@ describe('code context in a pipeline run', () => {
     expect(before).not.toBe(after);
   });
 });
+
+describe('plan in a pipeline run', () => {
+  const plan = [
+    { id: 'B1', behaviour: 'Rates are cleared when the address changes' },
+    { id: 'B2', behaviour: 'Name edits keep the rates' },
+  ];
+
+  it('reports the plan of each ticket and warns about a behaviour no case covers', async () => {
+    const ai = scriptedAI({
+      planFor: () => plan,
+      casesFor: () => [
+        { title: 'Alpha one unique scenario', expected: 'Beta one holds', covers: ['B1'] },
+      ],
+    });
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]?.plan).toEqual({ items: plan, uncovered: ['B2'] });
+    expect(
+      result.warnings.some((w) => w.includes('SHP-1: 1 planned behaviour(s) have no test case')),
+    ).toBe(true);
+    expect(result.warnings.join(' ')).toContain('B2 (Name edits keep the rates)');
+  });
+
+  it('says nothing when every planned behaviour has a case', async () => {
+    const ai = scriptedAI({
+      planFor: () => plan,
+      casesFor: () => [
+        { title: 'Alpha one unique scenario', expected: 'Beta one holds', covers: ['B1'] },
+        { title: 'Gamma two unique scenario', expected: 'Delta two holds', covers: ['B2'] },
+      ],
+    });
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]?.plan?.uncovered).toEqual([]);
+    expect(result.warnings.filter((w) => w.includes('planned behaviour'))).toEqual([]);
+  });
+
+  it('has no plan entry for a ticket that gave none', async () => {
+    const result = await runPipeline(scriptedAI(), [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]).not.toHaveProperty('plan');
+  });
+});

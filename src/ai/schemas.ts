@@ -78,6 +78,8 @@ export const testCaseSchema = z.object({
   preconditions: z.array(text(300)).max(10).default([]),
   /** Ids of cases that must run before this one. */
   depends_on: z.array(text(40)).max(10).default([]),
+  /** Ids of the plan items (B1, B2...) this case tests. */
+  covers: z.array(text(20)).max(10).optional(),
   /**
    * Set by us after checking the sources: grounded (a verified source and nothing assumed),
    * partly (a verified source, but some details are assumed) or assumed (no verified source).
@@ -91,10 +93,20 @@ export const ticketDetailSchema = z.object({
   missing: z.array(text(300)).max(10).default([]),
 });
 
+/** One behaviour the model found in the ticket and the context, before writing any case. */
+export const planItemSchema = z.object({
+  id: text(20),
+  behaviour: text(300),
+});
+
 export const generatedCasesSchema = z.object({
   detail: ticketDetailSchema.optional(),
+  /** Every behaviour worth testing. Each should be covered by at least one case. */
+  plan: z.array(planItemSchema).max(40).default([]),
   cases: z.array(testCaseSchema).min(1).max(40),
 });
+
+export type PlanItem = z.infer<typeof planItemSchema>;
 
 export type TestCase = z.infer<typeof testCaseSchema>;
 export type CaseSource = z.infer<typeof sourceSchema>;

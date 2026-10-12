@@ -28,6 +28,8 @@ export interface CaseSpec {
   preconditions?: string[];
   /** Ids within the ticket's own answer, such as TC-1. */
   depends_on?: string[];
+  /** Ids of plan items this case covers, such as B1. */
+  covers?: string[];
 }
 
 export interface ScriptOptions {
@@ -41,6 +43,8 @@ export interface ScriptOptions {
   throwFor?: Record<string, AIError>;
   /** These tickets fail only on the self-review call. */
   reviewThrowFor?: Record<string, AIError>;
+  /** The behaviours the model plans per ticket. Default: none. */
+  planFor?: (key: string) => { id: string; behaviour: string }[];
   /** The ticket-detail verdict the model gives per ticket. Default: enough detail. */
   detailFor?: (key: string) => { sufficient: boolean; missing: string[] } | undefined;
   /** What the flow request gets back. Default "ok". */
@@ -74,9 +78,11 @@ function casesAnswer(
   key: string,
   specs: CaseSpec[],
   detail?: { sufficient: boolean; missing: string[] },
+  plan?: { id: string; behaviour: string }[],
 ): string {
   return JSON.stringify({
     ...(detail && { detail }),
+    ...(plan && { plan }),
     cases: specs.map((spec, i) => ({
       id: `TC-${i + 1}`,
       ticket: key,
@@ -90,6 +96,7 @@ function casesAnswer(
       ...(spec.assumptions && { assumptions: spec.assumptions }),
       ...(spec.preconditions && { preconditions: spec.preconditions }),
       ...(spec.depends_on && { depends_on: spec.depends_on }),
+      ...(spec.covers && { covers: spec.covers }),
     })),
   });
 }
@@ -176,7 +183,7 @@ export function scriptedAI(options: ScriptOptions = {}): ScriptedAI {
         if (options.garbageFor?.includes(key)) return respond('Sorry, I cannot do that.');
 
         const specs = options.casesFor?.(key) ?? defaultCases(key, options.casesPerTicket ?? 2);
-        return respond(casesAnswer(key, specs, options.detailFor?.(key)));
+        return respond(casesAnswer(key, specs, options.detailFor?.(key), options.planFor?.(key)));
       } finally {
         inFlight--;
       }

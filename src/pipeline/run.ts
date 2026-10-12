@@ -2,7 +2,7 @@ import { AIError } from '../ai/errors.js';
 import { FlowError, generateFlow } from '../ai/flow.js';
 import { generateTestCases, GenerationError, type GenerateOptions } from '../ai/generate.js';
 import { PROMPT_VERSION, type PromptContext } from '../ai/prompt.js';
-import type { Flow, TestCase } from '../ai/schemas.js';
+import type { Flow, PlanItem, TestCase } from '../ai/schemas.js';
 import { UsageTracker, type AIProvider, type AIUsage } from '../ai/types.js';
 import type { Ticket } from '../jira/ticket.js';
 import { mapLimit } from '../util/concurrency.js';
@@ -34,7 +34,15 @@ export interface TicketCache {
 export interface CachedTicketResult {
   cases: TestCase[];
   detail: { sufficient: boolean; missing: string[] };
+  /** Left out of results cached before the plan existed. */
+  plan?: TicketPlan;
   model: string;
+}
+
+/** The behaviours the model planned for a ticket, and the ones no case covers. */
+export interface TicketPlan {
+  items: PlanItem[];
+  uncovered: string[];
 }
 
 export interface PipelineOptions {
@@ -76,6 +84,8 @@ export interface TicketOutcome {
   context?: unknown;
   /** Whether the ticket said enough to write reliable cases, and what was missing. */
   detail?: { sufficient: boolean; missing: string[] };
+  /** What the model planned to test, and the planned behaviours no case covers. */
+  plan?: TicketPlan;
   error?: string;
 }
 
@@ -179,6 +189,7 @@ export async function runPipeline(
           ...(context.meta !== undefined && { context: context.meta }),
           model: hit.model,
           detail: hit.detail,
+          ...(hit.plan && { plan: hit.plan }),
         };
         done++;
         emit({ type: 'ticket_done', ticket: ticket.key, cases: hit.cases.length, done, total });
@@ -197,6 +208,7 @@ export async function runPipeline(
           ?.put(ticket, context, {
             cases: result.cases,
             detail: result.detail,
+            plan: result.plan,
             model: result.model,
           })
           .catch(() => undefined);
@@ -212,6 +224,7 @@ export async function runPipeline(
         ...(context.meta !== undefined && { context: context.meta }),
         model: result.model,
         detail: result.detail,
+        ...(result.plan.items.length > 0 && { plan: result.plan }),
         ...(result.reviewNote !== undefined && { reviewNote: result.reviewNote }),
       };
       rateLimitStreak = 0;
@@ -253,6 +266,16 @@ export async function runPipeline(
           ' Treat its cases as drafts built on assumptions.',
       );
     }
+  }
+  for (const outcome of outcomes) {
+    const plan = outcome.plan;
+    if (outcome.status !== 'ok' || !plan || plan.uncovered.length === 0) continue;
+    const named = plan.items
+      .filter((item) => plan.uncovered.includes(item.id))
+      .map((item) => `${item.id} (${item.behaviour})`);
+    warnings.push(
+      `${outcome.ticket}: ${named.length} planned behaviour(s) have no test case: ${named.join('; ')}.`,
+    );
   }
   if (options.generate?.selfReview !== false) {
     const unreviewed = outcomes.filter((o) => o.status === 'ok' && o.reviewed === false);

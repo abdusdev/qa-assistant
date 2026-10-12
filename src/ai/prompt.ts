@@ -2,7 +2,7 @@ import type { Ticket } from '../jira/ticket.js';
 import { DEFAULT_FLOW_STEPS } from './schemas.js';
 
 /** Stored with every run, so a result can be traced to the instructions that produced it. */
-export const PROMPT_VERSION = 'v2';
+export const PROMPT_VERSION = 'v3';
 
 /** Extra context for a ticket. Filled by the knowledge and GitHub issues; optional until then. */
 export interface PromptContext {
@@ -31,7 +31,7 @@ const MAX_COMMENTS = 15;
 const MAX_COMMENT_CHARS = 1_500;
 const MAX_CONTEXT_CHARS = 8_000;
 /** Code changes get more room than notes: a diff is only useful with its names and values intact. */
-export const MAX_CODE_CHARS = 12_000;
+export const MAX_CODE_CHARS = 24_000;
 const MAX_PREVIOUS_ANSWER_CHARS = 4_000;
 
 /** Tags that wrap data in the prompt. Text inside them must never be able to close them. */
@@ -94,11 +94,13 @@ function formatComments(ticket: Ticket): string | undefined {
 const FLOW_STEP_LIST = DEFAULT_FLOW_STEPS.join(', ');
 
 const OUTPUT_EXAMPLE =
-  '{"detail":{"sufficient":true,"missing":[]},"cases":[{"id":"TC-1","ticket":"<the ticket key>",' +
+  '{"detail":{"sufficient":true,"missing":[]},' +
+  '"plan":[{"id":"B1","behaviour":"<one thing the feature must do or must not do>"}],' +
+  '"cases":[{"id":"TC-1","ticket":"<the ticket key>",' +
   '"flow_step":"Happy path","title":"...","type":"ui","priority":"high",' +
   '"preconditions":["..."],"steps":["...","..."],"expected":"...",' +
   '"sources":[{"from":"ticket","quote":"<short exact excerpt>"}],' +
-  '"assumptions":["..."],"depends_on":[]}]}';
+  '"assumptions":["..."],"depends_on":[],"covers":["B1"]}]}';
 
 /** The code guidance is added only when there are code changes, so other prompts stay as they were. */
 const CODE_GUIDANCE = [
@@ -141,6 +143,17 @@ function systemPrompt(productKnowledge?: string, hasCodeChanges = false): string
       '- priority: "high" when money, shipping correctness or data safety is affected, "medium" for ' +
         'normal functionality, "low" for cosmetic or rare cases.',
       '- Write 4 to 12 cases for a normal ticket: fewer for a tiny change, more only for a large one.',
+    ].join('\n'),
+    [
+      '## Plan first',
+      'Before the cases, list in "plan" every distinct behaviour worth testing that the ticket and the ' +
+        'context describe or imply: each field or input that matters, each condition and rule, each ' +
+        'state, each place the user can start from, and each failure. One short sentence each, with ' +
+        'ids B1, B2, ...',
+      '- Then write at least one case for every plan item, and list the ids it tests in "covers". ' +
+        'Several cases may cover one item (for example a limit and a value just past it).',
+      '- Only plan what the text supports, or ordinary QA practice such as a negative case. Do not ' +
+        'plan behaviour you are only guessing.',
     ].join('\n'),
     [
       '## Grounding',
@@ -255,6 +268,8 @@ export function buildReviewPrompt(
         '- cases that test something the ticket does not mention (remove them)',
         '- steps that are not concrete actions',
         '- button names, labels or messages in quotes that are not in the ticket or the context (describe them generically)',
+        '- a plan item that no case covers: add a case for it, or remove the item when it is not testable',
+        '- a case whose "covers" is missing or names an id that is not in the plan',
         '- a case that uses something another case creates but does not list it in depends_on',
         '- missing or wrong "sources" and "assumptions": every case needs them, and sources must be exact excerpts',
         'Keep what is already good. Number the ids TC-1, TC-2, ... again.',

@@ -29,12 +29,15 @@ describe.each(backends())('database on $name', (backend) => {
   const repository = () => openRepository(shared);
 
   describe('migrations', () => {
+    const all = migrations.map((m) => m.version);
+    const next = all.length + 1;
+
     it('creates every table and records the version', async () => {
       const db = await fresh();
 
       const result = await migrate(db);
 
-      expect(result.applied).toEqual([1]);
+      expect(result.applied).toEqual(all);
       expect(await tablesOf(db)).toEqual(
         [
           'case_revisions',
@@ -46,7 +49,22 @@ describe.each(backends())('database on $name', (backend) => {
           'ticket_cache',
         ].sort(),
       );
-      expect(await migrationStatus(db)).toEqual({ applied: [1], pending: [] });
+      expect(await migrationStatus(db)).toEqual({ applied: all, pending: [] });
+    });
+
+    it('adds the plan of each ticket and the coverage of each case', async () => {
+      const db = await fresh();
+      await migrate(db);
+
+      const columns = await db.query<{ table_name: string; column_name: string }>(
+        `SELECT table_name, column_name FROM information_schema.columns
+         WHERE column_name IN ('plan', 'covers') AND table_schema = current_schema()`,
+      );
+
+      expect(columns.rows.map((r) => `${r.table_name}.${r.column_name}`).sort()).toEqual([
+        'run_tickets.plan',
+        'test_cases.covers',
+      ]);
     });
 
     it('does nothing when run again', async () => {
@@ -60,9 +78,9 @@ describe.each(backends())('database on $name', (backend) => {
       const db = await fresh();
       await migrate(db);
 
-      expect(await rollback(db)).toEqual({ reverted: [1] });
+      expect(await rollback(db, all.length)).toEqual({ reverted: [...all].reverse() });
       expect(await tablesOf(db)).toEqual(['schema_migrations']);
-      expect(await migrate(db)).toEqual({ applied: [1] });
+      expect(await migrate(db)).toEqual({ applied: all });
       expect((await tablesOf(db)).length).toBeGreaterThan(5);
     });
 
@@ -71,11 +89,16 @@ describe.each(backends())('database on $name', (backend) => {
       await migrate(db);
       const withNew: Migration[] = [
         ...migrations,
-        { version: 2, name: 'extra', up: 'CREATE TABLE extra (id int)', down: 'DROP TABLE extra' },
+        {
+          version: next,
+          name: 'extra',
+          up: 'CREATE TABLE extra (id int)',
+          down: 'DROP TABLE extra',
+        },
       ];
 
-      expect(await migrationStatus(db, withNew)).toEqual({ applied: [1], pending: [2] });
-      expect(await migrate(db, withNew)).toEqual({ applied: [2] });
+      expect(await migrationStatus(db, withNew)).toEqual({ applied: all, pending: [next] });
+      expect(await migrate(db, withNew)).toEqual({ applied: [next] });
       expect(await tablesOf(db)).toContain('extra');
     });
 
@@ -85,7 +108,7 @@ describe.each(backends())('database on $name', (backend) => {
       const broken: Migration[] = [
         ...migrations,
         {
-          version: 2,
+          version: next,
           name: 'broken',
           up: 'CREATE TABLE half_done (id int); SELECT * FROM table_that_does_not_exist;',
           down: 'DROP TABLE half_done',
@@ -95,7 +118,7 @@ describe.each(backends())('database on $name', (backend) => {
       await expect(migrate(db, broken)).rejects.toThrow();
 
       expect(await tablesOf(db)).not.toContain('half_done');
-      expect((await migrationStatus(db)).applied).toEqual([1]);
+      expect((await migrationStatus(db)).applied).toEqual(all);
     });
 
     it('rejects a list with a gap in the numbering', async () => {
@@ -108,9 +131,57 @@ describe.each(backends())('database on $name', (backend) => {
     it('refuses to undo a migration this version of the app does not know', async () => {
       const db = await fresh();
       await migrate(db);
-      await db.query("INSERT INTO schema_migrations (version, name) VALUES (2, 'from_the_future')");
+      await db.query(
+        `INSERT INTO schema_migrations (version, name) VALUES (${next}, 'from_the_future')`,
+      );
 
       await expect(rollback(db)).rejects.toThrow(/unknown to this version/);
+    });
+  });
+
+  describe('plan and coverage', () => {
+    it('stores the plan of each ticket and what each case covers', async () => {
+      const { repo } = await repository();
+      const plan = [
+        { id: 'B1', behaviour: 'Rates are cleared when the address changes' },
+        { id: 'B2', behaviour: 'Name edits keep the rates' },
+      ];
+      const result = await sampleResult({
+        keys: ['SHP-1'],
+        planFor: () => plan,
+        casesFor: () => [
+          { title: 'Alpha one unique scenario', expected: 'Beta one holds', covers: ['B1'] },
+        ],
+      });
+
+      const runId = await repo.createRun({
+        mode: 'ticket',
+        value: 'SHP-1',
+        filters: {},
+        promptVersion: result.promptVersion,
+      });
+      await repo.saveResult(runId, result);
+      const run = await repo.getRun(runId);
+
+      expect(run?.tickets[0]?.plan).toEqual({ items: plan, uncovered: ['B2'] });
+      expect(run?.cases[0]?.covers).toEqual(['B1']);
+    });
+
+    it('stores a ticket without a plan as null and a case with no coverage as empty', async () => {
+      const { repo } = await repository();
+      const result = await sampleResult({ keys: ['SHP-1'], casesPerTicket: 1 });
+
+      const runId = await repo.createRun({
+        mode: 'ticket',
+        value: 'SHP-1',
+        filters: {},
+        promptVersion: result.promptVersion,
+      });
+      await repo.saveResult(runId, result);
+      const run = await repo.getRun(runId);
+
+      expect(run?.tickets[0]?.plan).toBeNull();
+      expect(run?.cases[0]?.covers).toEqual([]);
     });
   });
 

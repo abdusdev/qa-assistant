@@ -257,6 +257,39 @@ describe('CodeContextProvider', () => {
     expect(source.calls.recent).toHaveLength(1);
   });
 
+  it('shows the files that are about the ticket first, and reports which ones', async () => {
+    const lines = (count: number, text: string) => Array.from({ length: count }, () => text);
+    const big = (name: string, text: string) =>
+      file(name, {
+        additions: 60,
+        patch: ['@@ -1 +1 @@', ...lines(40, text)].join(String.fromCharCode(10)),
+      });
+    const files = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        big('src/billing/module' + i + '.ts', '+const unrelatedValue = "x";'),
+      ),
+      file('src/rates/invalidateQuote.ts', {
+        additions: 3,
+        patch: ['@@ -1 +1 @@', '+export const STALE = "quote is stale";'].join(
+          String.fromCharCode(10),
+        ),
+      }),
+    ];
+    const { provider: p } = provider(
+      { recent: [pr(90, { title: 'Quote (SHP-4103)' })], files: { 90: files } },
+      { maxChars: 5_000 },
+    );
+    const quoteTicket = makeTicket('SHP-4103', {
+      summary: 'Invalidate the quote when the address changes',
+      description: 'The stale quote must be cleared when the ship to address changes.',
+    });
+
+    const context = await p.contextFor(quoteTicket);
+
+    expect(context.meta.pullRequests[0]?.shownFiles[0]).toBe('src/rates/invalidateQuote.ts');
+    expect(context.codeChanges).toContain('### src/rates/invalidateQuote.ts');
+  });
+
   it('uses several pull requests of one ticket, merged ones first, and splits the room', async () => {
     const { provider: p } = provider(
       {

@@ -16,7 +16,12 @@ import {
   mergeDetail,
   type DetailAssessment,
 } from './grounding.js';
-import { generatedCasesSchema, type TestCase, type TicketDetail } from './schemas.js';
+import {
+  generatedCasesSchema,
+  type PlanItem,
+  type TestCase,
+  type TicketDetail,
+} from './schemas.js';
 import { UsageTracker, type AIProvider, type AIUsage } from './types.js';
 
 export interface GenerateOptions {
@@ -46,6 +51,8 @@ export interface GenerateResult {
   model: string;
   /** Whether the ticket says enough to write reliable cases, and what is missing if not. */
   detail: DetailAssessment;
+  /** What the model planned to test, and the planned behaviours that no case covers. */
+  plan: { items: PlanItem[]; uncovered: string[] };
 }
 
 /** The AI never produced a valid answer within the allowed attempts. */
@@ -66,8 +73,13 @@ export class GenerationError extends Error {
   }
 }
 
+interface Plan {
+  items: PlanItem[];
+  uncovered: string[];
+}
+
 type Parsed =
-  | { ok: true; cases: TestCase[]; detail: TicketDetail | undefined }
+  | { ok: true; cases: TestCase[]; detail: TicketDetail | undefined; plan: Plan }
   | { ok: false; problems: string[] };
 
 /** Turns an AI answer into validated cases, or a list of what is wrong with it. */
@@ -107,7 +119,34 @@ function parseAnswer(text: string, truncated: boolean, ticketKey: string): Parse
       .filter((dep): dep is string => dep !== undefined && dep !== id);
     return { ...testCase, id, ticket: ticketKey, depends_on: [...new Set(dependsOn)] };
   });
-  return { ok: true, cases, detail: result.data.detail };
+
+  // The plan is renumbered B1..n too. A case may only cover items that exist, and a planned
+  // behaviour that no case covers is reported, not hidden.
+  const newPlanId = new Map<string, string>();
+  const items = result.data.plan.map((item, index) => {
+    newPlanId.set(item.id, `B${index + 1}`);
+    return { id: `B${index + 1}`, behaviour: item.behaviour };
+  });
+  const covered = new Set<string>();
+  const withCoverage = cases.map((testCase) => {
+    const covers = [
+      ...new Set(
+        (testCase.covers ?? [])
+          .map((old) => newPlanId.get(old))
+          .filter((id): id is string => id !== undefined),
+      ),
+    ];
+    covers.forEach((id) => covered.add(id));
+    return { ...testCase, covers };
+  });
+  const uncovered = items.filter((item) => !covered.has(item.id)).map((item) => item.id);
+
+  return {
+    ok: true,
+    cases: withCoverage,
+    detail: result.data.detail,
+    plan: { items, uncovered },
+  };
 }
 
 /**
@@ -143,6 +182,7 @@ export async function generateTestCases(
   const evidence = buildEvidence(ticket, context);
   const grounded = (items: TestCase[]) => items.map((item) => groundCase(item, evidence));
   let modelDetail: TicketDetail | undefined;
+  let plan: Plan = { items: [], uncovered: [] };
 
   const original = buildGenerationPrompt(ticket, context);
   let request = original;
@@ -159,7 +199,8 @@ export async function generateTestCases(
     if (parsed.ok) {
       cases = grounded(parsed.cases);
       modelDetail = parsed.detail;
-      lastDraftJson = JSON.stringify({ detail: modelDetail, cases });
+      plan = parsed.plan;
+      lastDraftJson = JSON.stringify({ detail: modelDetail, plan: plan.items, cases });
       break;
     }
 
@@ -181,6 +222,8 @@ export async function generateTestCases(
       if (parsed.ok) {
         cases = grounded(parsed.cases);
         modelDetail = parsed.detail ?? modelDetail;
+        // A review that dropped the plan keeps the first one rather than losing it.
+        if (parsed.plan.items.length > 0) plan = parsed.plan;
         reviewed = true;
       } else {
         reviewNote = `The review answer was invalid, so the first draft was kept: ${parsed.problems[0]}`;
@@ -203,5 +246,6 @@ export async function generateTestCases(
     promptVersion: PROMPT_VERSION,
     model: answeredBy,
     detail: mergeDetail(assessTicketDetail(ticket), modelDetail),
+    plan,
   };
 }
