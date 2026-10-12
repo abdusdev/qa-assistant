@@ -5,7 +5,8 @@
     "type": "Story",
     "status": "Done",
     "description": "As a seller I can select several orders on the Orders page and create shipments for all of them in one action.\n\nRules:\n- At most 100 orders can be selected for one bulk action. Selecting more shows an error and nothing is created.\n- Each order uses the courier rate that was selected for it. Orders without a selected rate are skipped.\n- Orders whose Ship To address is invalid are skipped and listed in a result summary with the reason.\n- When the courier service is unavailable, no shipment is created for the failed orders and the seller can retry them.\n- After the action, a summary shows how many shipments were created and how many were skipped or failed.",
-    "acceptanceCriteria": "1. Selecting 1 to 100 orders and clicking Create shipments creates one shipment per eligible order.\n2. Selecting 101 orders shows the error \"You can create shipments for up to 100 orders at a time\" and creates nothing.\n3. Orders with no selected rate or an invalid address are skipped and appear in the summary with a reason.\n4. A courier outage leaves failed orders without shipments and shows a Retry action."
+    "acceptanceCriteria": "1. Selecting 1 to 100 orders and clicking Create shipments creates one shipment per eligible order.\n2. Selecting 101 orders shows the error \"You can create shipments for up to 100 orders at a time\" and creates nothing.\n3. Orders with no selected rate or an invalid address are skipped and appear in the summary with a reason.\n4. A courier outage leaves failed orders without shipments and shows a Retry action.",
+    "updated": "2026-10-01T10:00:00.000+0100"
   },
   "reference": [
     {

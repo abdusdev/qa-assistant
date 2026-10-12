@@ -15,6 +15,8 @@ export const ticketSchema = z.object({
   status: z.string(),
   description: z.string(),
   acceptanceCriteria: z.string().optional(),
+  /** When Jira last changed the ticket. Lets a cached result be trusted only while it is current. */
+  updated: z.string().optional(),
   parentKey: z.string().optional(),
   labels: z.array(z.string()),
   fixVersions: z.array(z.string()),

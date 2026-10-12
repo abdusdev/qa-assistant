@@ -35,6 +35,7 @@ const BASE_FIELDS = [
   'labels',
   'fixVersions',
   'comment',
+  'updated',
 ];
 
 const named = z.looseObject({ name: z.string() });
@@ -43,6 +44,7 @@ const rawIssueSchema = z.looseObject({
   key: z.string(),
   fields: z.looseObject({
     summary: z.string().nullish(),
+    updated: z.string().nullish(),
     description: z.unknown().optional(),
     status: named.nullish(),
     issuetype: named.nullish(),
@@ -254,6 +256,7 @@ export class JiraClient {
       description: adfToText(fields.description),
       ...(acceptanceCriteria !== '' && { acceptanceCriteria }),
       ...(fields.parent && { parentKey: fields.parent.key }),
+      ...(fields.updated && { updated: fields.updated }),
       labels: fields.labels ?? [],
       fixVersions: (fields.fixVersions ?? []).map((version) => version.name),
       comments: (fields.comment?.comments ?? []).map((comment) => ({

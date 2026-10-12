@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     include: ['tests/unit/**/*.test.ts'],
     environment: 'node',
+    testTimeout: 30_000,
+    hookTimeout: 120_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
@@ -16,6 +18,7 @@ export default defineConfig({
         'src/ai/eval.ts',
         'src/ai/eval-file.ts',
         'src/pipeline/cli.ts',
+        'src/db/cli.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {

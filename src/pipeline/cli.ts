@@ -18,6 +18,8 @@ import { JiraClient } from '../jira/client.js';
 import { JiraError } from '../jira/errors.js';
 import { resolveInput, type InputMode } from '../jira/resolver.js';
 import type { Ticket } from '../jira/ticket.js';
+import { PROMPT_VERSION } from '../ai/prompt.js';
+import { createTicketCache, migrate, openDatabase, Repository, type Db } from '../db/index.js';
 import { runPipeline } from './run.js';
 
 const JIRA_MODES: InputMode[] = ['ticket', 'list', 'sprint', 'epic', 'release'];
@@ -140,9 +142,40 @@ async function main(): Promise<void> {
   const concurrency =
     typeof flags.get('concurrency') === 'string' ? Number(flags.get('concurrency')) : undefined;
 
+  const selfReview = !flags.has('no-review');
+
+  // With DATABASE_URL set, the run is saved and unchanged tickets are not sent to the AI again.
+  let db: Db | undefined;
+  let repo: Repository | undefined;
+  let runId: string | undefined;
+  if (config.databaseUrl && !flags.has('no-save')) {
+    db = await openDatabase(config.databaseUrl);
+    await migrate(db);
+    repo = new Repository(db);
+    runId = await repo.createRun({
+      mode,
+      value: rest.join(' ').slice(0, 500),
+      filters: {
+        ...(csv(flags.get('type')) && { types: csv(flags.get('type')) }),
+        ...(csv(flags.get('status')) && { statuses: csv(flags.get('status')) }),
+      },
+      promptVersion: PROMPT_VERSION,
+    });
+  }
+
+  const cache =
+    repo && !flags.has('no-cache')
+      ? createTicketCache(repo, {
+          promptVersion: PROMPT_VERSION,
+          model: config.ai.model ?? provider.name,
+          selfReview,
+        })
+      : undefined;
+
   const result = await runPipeline(provider, tickets, {
     ...(concurrency !== undefined && { concurrency }),
-    generate: { selfReview: !flags.has('no-review') },
+    ...(cache && { cache }),
+    generate: { selfReview },
     onProgress: (event) => {
       if (event.type === 'ticket_done') {
         console.log(
@@ -156,6 +189,13 @@ async function main(): Promise<void> {
         console.log(`  ordering ${event.cases} cases into a flow...`);
       }
     },
+  }).catch(async (error: unknown) => {
+    // A run that stops (for example a rejected key) must not stay marked as running.
+    if (repo && runId) {
+      await repo.failRun(runId, error instanceof Error ? error.message : String(error));
+    }
+    await db?.close();
+    throw error;
   });
 
   console.log(`\n== Test flow (${result.flowSource}) ==`);
@@ -186,6 +226,15 @@ async function main(): Promise<void> {
       `${result.tickets.length} tickets | ${result.calls} AI calls | ${result.usage.totalTokens} tokens | ` +
       `${(result.durationMs / 1000).toFixed(1)} s`,
   );
+
+  if (repo && runId) {
+    await repo.saveResult(runId, result);
+    const fromCache = result.tickets.filter((t) => t.cached).length;
+    console.log(
+      `Saved as run ${runId}${fromCache > 0 ? ` (${fromCache} ticket(s) came from the cache)` : ''}`,
+    );
+  }
+  await db?.close();
 
   const outDir = path.resolve('out');
   await mkdir(outDir, { recursive: true });

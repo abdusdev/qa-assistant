@@ -44,6 +44,7 @@ const envSchema = z
     GITHUB_REPOS: optional(z.string().min(1)),
 
     DATABASE_URL: optional(z.url()),
+    DB_RETENTION_DAYS: withDefault(z.coerce.number().int().min(1).max(3650).default(90)),
   })
   .superRefine((env, ctx) => {
     const jira = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'] as const;
@@ -99,6 +100,8 @@ export interface AppConfig {
     repos: string[];
   };
   databaseUrl?: string;
+  /** Runs and cached results older than this many days are removed by `db purge`. */
+  databaseRetentionDays: number;
 }
 
 /**
@@ -119,6 +122,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     env: env.NODE_ENV,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
+    databaseRetentionDays: env.DB_RETENTION_DAYS,
     ai: {
       provider: env.AI_PROVIDER,
       maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,

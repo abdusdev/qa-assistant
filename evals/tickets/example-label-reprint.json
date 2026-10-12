@@ -5,7 +5,8 @@
     "type": "Story",
     "status": "Done",
     "description": "As a seller I can reprint the label of a shipment that was already created, without creating a new shipment.\n\nRules:\n- The Reprint label button is shown for shipments that are not voided and not delivered.\n- Reprinting uses the same tracking number and does not create a new charge.\n- The label format (PDF or ZPL) follows the account's carrier configuration.\n- Only users with the Shipments permission can reprint.\n- If the courier cannot return the label, an error message is shown and the seller can try again.",
-    "acceptanceCriteria": "1. Reprint is available for active shipments and returns the same tracking number.\n2. No new charge is created.\n3. A user without the Shipments permission does not see the button.\n4. A courier error shows a retry option."
+    "acceptanceCriteria": "1. Reprint is available for active shipments and returns the same tracking number.\n2. No new charge is created.\n3. A user without the Shipments permission does not see the button.\n4. A courier error shows a retry option.",
+    "updated": "2026-10-01T10:00:00.000+0100"
   },
   "reference": [
     {
