@@ -99,6 +99,19 @@ the draft) and flow (case titles only). `--print-prompt` prints the exact prompt
 A ticket with no pull request is generated from its own text, with a warning. A code overview of a whole module
 can be drafted with `npm run digest` and is used only after a person has reviewed it (see `knowledge/README.md`).
 
+## Plan and checks
+
+- **Plan first, in the same call.** The model lists every behaviour it finds in the ticket and the code (`plan`,
+  B1, B2...) and then writes at least one case per item (`covers`). A planned behaviour with no case is listed as a
+  warning. No extra AI call is made, which matters because Gemini's free tier limits requests per day.
+- **Most relevant code first.** Changed files are ranked by how many of the ticket's words appear in their path and
+  changed lines, so a relevant test file comes before a large unrelated one. Each run reports which files were shown.
+- **Invented details are flagged.** An HTTP status code, an endpoint path or a number (10 or more) in a case that is
+  not in the ticket or the context is added to the case's "to confirm" list. A value one away from a number in the
+  sources is allowed, since boundary cases are made that way. This catches invented values, not a real value used
+  for the wrong thing, so review is still needed.
+- The plan and the coverage of each case are saved with the run (`npm run db -- migrate` adds the columns).
+
 ## Database
 
 Set `DATABASE_URL` in `.env` to save runs and reuse results for tickets that have not changed:

@@ -161,6 +161,46 @@ describe('groundCase', () => {
     expect(result.assumptions).toEqual(['The limit is 100 orders per request']);
   });
 
+  it('lists an invented status code, endpoint or number and drops the case to "partly"', () => {
+    const result = groundCase(
+      testCase({
+        steps: ['Send a request to /api/v2/labels', 'Select 50 orders'],
+        expected: 'The API returns a 409 Conflict error',
+        sources: [
+          { from: 'ticket', quote: 'Shipping must be blocked until new rates are fetched' },
+        ],
+      }),
+      evidence,
+    );
+
+    expect(result.grounding).toBe('partly');
+    expect(result.assumptions).toEqual([
+      'The status code "409" is not in the ticket or context. Confirm it.',
+      'The endpoint "/api/v2/labels" is not in the ticket or context. Confirm it.',
+      'The number "50" is not in the ticket or context. Confirm it.',
+    ]);
+  });
+
+  it('does not question a detail that is in the ticket or the context', () => {
+    const result = groundCase(
+      testCase({
+        steps: ['Open the page /rates/outdated', 'Wait 30 seconds'],
+        expected: 'The API returns 409',
+        sources: [
+          { from: 'ticket', quote: 'Shipping must be blocked until new rates are fetched' },
+        ],
+      }),
+      buildEvidence(ticket, {
+        moduleNotes:
+          'The page /rates/outdated lists stale quotes. A request returns 409 while busy.',
+        codeChanges: 'const TIMEOUT_SECONDS = 30',
+      }),
+    );
+
+    expect(result.grounding).toBe('grounded');
+    expect(result.assumptions).toEqual([]);
+  });
+
   it('corrects the part when the quote is real but from another part', () => {
     const result = groundCase(
       testCase({ sources: [{ from: 'ticket', quote: 'Phone changes keep rates' }] }),

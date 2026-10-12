@@ -44,10 +44,65 @@ export function classifyFile(path: string): FileKind {
 /** Higher is shown first. Tests rank high because they state the intended behaviour. */
 const RANK: Record<FileKind, number> = { source: 4, test: 3, config: 2, docs: 1, noise: 0 };
 
-export function rankFiles(files: ChangedFile[]): ChangedFile[] {
+const STOP_WORDS = new Set(
+  (
+    'that this with from have will when then than they them their there these those been being ' +
+    'into onto over under after before while where which what whose should would could must ' +
+    'does done also only same such each both more most some any all not but and the for are was ' +
+    'were can may might user users order orders ticket expected actual result steps step shown ' +
+    'show shows ship shipped shipping'
+  ).split(' '),
+);
+
+/** The words of a ticket that point at code: longer words, not the common ones. */
+export function ticketTerms(text: string, max = 40): string[] {
+  const words = text
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 4 && !STOP_WORDS.has(word) && !/^[0-9]+$/.test(word));
+  return [...new Set(words)].slice(0, max);
+}
+
+const wordsIn = (text: string) =>
+  new Set(
+    text
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+
+/**
+ * How much a changed file has to do with the ticket: a ticket word in its path counts double,
+ * one in its changed lines counts once. Capped, so one very wordy file cannot take over.
+ */
+export function relevanceOf(file: ChangedFile, terms: string[]): number {
+  if (terms.length === 0) return 0;
+  const inPath = wordsIn(file.path);
+  const changed = (file.patch ?? '')
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('+') || line.startsWith('-'))
+    .join(' ');
+  const inLines = wordsIn(changed);
+  let score = 0;
+  for (const term of terms) {
+    if (inPath.has(term)) score += 2;
+    else if (inLines.has(term)) score += 1;
+  }
+  return Math.min(score, 8);
+}
+
+/**
+ * Most useful first: the kind of file sets the base, and each point of relevance to the ticket
+ * adds half a point, so a relevant test file can come before an unrelated source file.
+ */
+export function rankFiles(files: ChangedFile[], terms: string[] = []): ChangedFile[] {
+  const score = (file: ChangedFile) =>
+    RANK[classifyFile(file.path)] * 2 + relevanceOf(file, terms) * 0.5;
   return [...files].sort((a, b) => {
-    const byKind = RANK[classifyFile(b.path)] - RANK[classifyFile(a.path)];
-    if (byKind !== 0) return byKind;
+    const byScore = score(b) - score(a);
+    if (byScore !== 0) return byScore;
     const bySize = b.additions + b.deletions - (a.additions + a.deletions);
     return bySize !== 0 ? bySize : a.path.localeCompare(b.path);
   });

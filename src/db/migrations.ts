@@ -120,4 +120,16 @@ export const migrations: Migration[] = [
       DROP TABLE IF EXISTS runs;
     `,
   },
+  {
+    version: 2,
+    name: 'plan_and_coverage',
+    up: `
+      ALTER TABLE run_tickets ADD COLUMN plan jsonb;
+      ALTER TABLE test_cases ADD COLUMN covers jsonb NOT NULL DEFAULT '[]'::jsonb;
+    `,
+    down: `
+      ALTER TABLE test_cases DROP COLUMN covers;
+      ALTER TABLE run_tickets DROP COLUMN plan;
+    `,
+  },
 ];

@@ -41,6 +41,8 @@ export interface StoredTicket {
   reviewNote: string | null;
   error: string | null;
   detail: { sufficient: boolean; missing: string[] } | null;
+  /** The behaviours the model planned for this ticket, and the ones no case covers. */
+  plan: { items: { id: string; behaviour: string }[]; uncovered: string[] } | null;
 }
 
 /** A case as stored: the AI's fields plus what QA did with it. */
@@ -153,6 +155,7 @@ interface CaseRow {
   assumptions: string[];
   sources: TestCase['sources'];
   depends_on: string[];
+  covers: string[];
   grounding: TestCase['grounding'];
   origin: 'generated' | 'added';
   edited: boolean;
@@ -182,6 +185,7 @@ const toCase = (row: CaseRow): StoredCase => ({
   assumptions: row.assumptions,
   sources: row.sources,
   depends_on: row.depends_on,
+  covers: row.covers,
   grounding: row.grounding,
   state: stateOf(row),
   updatedAt: row.updated_at,
@@ -260,8 +264,8 @@ export class Repository {
       for (const [position, ticket] of result.tickets.entries()) {
         await tx.query(
           `INSERT INTO run_tickets (run_id, ticket_key, position, status, cases, attempts, reviewed,
-             cached, model, review_note, error, detail)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
+             cached, model, review_note, error, detail, plan)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb)`,
           [
             runId,
             ticket.ticket,
@@ -275,6 +279,7 @@ export class Repository {
             ticket.reviewNote ?? null,
             ticket.error ?? null,
             ticket.detail ? json(ticket.detail) : null,
+            ticket.plan ? json(ticket.plan) : null,
           ],
         );
       }
@@ -325,6 +330,7 @@ export class Repository {
       review_note: string | null;
       error: string | null;
       detail: StoredTicket['detail'];
+      plan: StoredTicket['plan'];
     }>('SELECT * FROM run_tickets WHERE run_id = $1 ORDER BY position', [runId]);
 
     const steps = await this.db.query<{ position: number; name: string; description: string }>(
@@ -359,6 +365,7 @@ export class Repository {
         reviewNote: t.review_note,
         error: t.error,
         detail: t.detail,
+        plan: t.plan,
       })),
       flow: steps.rows.map((step) => ({
         ...step,
@@ -379,9 +386,9 @@ export class Repository {
   ): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO test_cases (run_id, code, ticket_key, position, flow_step, title, type, priority,
-         steps, expected, preconditions, assumptions, sources, depends_on, grounding, origin)
+         steps, expected, preconditions, assumptions, sources, depends_on, covers, grounding, origin)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12::jsonb, $13::jsonb,
-         $14::jsonb, $15, $16)
+         $14::jsonb, $15::jsonb, $16, $17)
        RETURNING id`,
       [
         runId,
@@ -398,6 +405,7 @@ export class Repository {
         json(testCase.assumptions),
         json(testCase.sources),
         json(testCase.depends_on),
+        json(testCase.covers ?? []),
         testCase.grounding,
         origin,
       ],
