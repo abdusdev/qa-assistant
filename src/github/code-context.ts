@@ -1,6 +1,6 @@
 import { MAX_CODE_CHARS, type PromptContext } from '../ai/prompt.js';
 import type { Ticket } from '../jira/ticket.js';
-import { classifyFile, rankFiles } from './filter.js';
+import { classifyFile, rankFiles, ticketTerms } from './filter.js';
 import { GitHubError } from './errors.js';
 import { isSensitivePath, redactSecrets } from './redact.js';
 import type { ChangedFile, GitHubSource, PullRequest } from './types.js';
@@ -59,6 +59,8 @@ export interface CodePullRequestMeta {
   matchedIn: MatchedIn[];
   files: number;
   filesShown: number;
+  /** The files whose changed lines were included, in the order shown. */
+  shownFiles: string[];
   filesLeftOut: number;
   secretsRedacted: number;
 }
@@ -74,7 +76,7 @@ export interface CodeContext extends Pick<PromptContext, 'codeChanges' | 'warnin
   meta: CodeMeta;
 }
 
-const PER_FILE_CHARS = 900;
+const PER_FILE_CHARS = 1_500;
 const MAX_LISTED_FILES = 25;
 const MAX_BODY_CHARS = 1_200;
 const STATUS_LETTER: Record<ChangedFile['status'], string> = {
@@ -122,6 +124,11 @@ export interface PullRequestDigest {
   meta: Omit<CodePullRequestMeta, 'matchedIn'>;
 }
 
+export interface DigestOptions {
+  /** Words of the ticket, used to put the most relevant files first. */
+  terms?: string[];
+}
+
 /**
  * Turns one pull request into compact text for the prompt: the title, a short description, the list
  * of changed files and the changed lines of the most useful ones, within a size limit. Secrets are
@@ -131,6 +138,7 @@ export function buildPullRequestDigest(
   pr: PullRequest,
   files: ChangedFile[],
   maxChars: number,
+  options: DigestOptions = {},
 ): PullRequestDigest {
   let secrets = 0;
   const clean = (value: string): string => {
@@ -141,7 +149,7 @@ export function buildPullRequestDigest(
 
   const title = clean(pr.title);
   const usable = files.filter((f) => !isSensitivePath(f.path) && classifyFile(f.path) !== 'noise');
-  const ranked = rankFiles(usable);
+  const ranked = rankFiles(usable, options.terms);
   const leftOut = files.length - usable.length;
 
   const totals =
@@ -173,6 +181,7 @@ export function buildPullRequestDigest(
   const header = lines.join('\n');
   let remaining = maxChars - header.length - 40;
   const sections: string[] = [];
+  const shownFiles: string[] = [];
   let shown = 0;
 
   for (const file of ranked) {
@@ -185,6 +194,7 @@ export function buildPullRequestDigest(
     const section = `### ${file.path}\n${body}`;
     if (section.length > remaining) break;
     sections.push(section);
+    shownFiles.push(file.path);
     remaining -= section.length + 2;
     shown++;
   }
@@ -206,6 +216,7 @@ export function buildPullRequestDigest(
       state: describeState(pr),
       files: files.length,
       filesShown: shown,
+      shownFiles,
       filesLeftOut: leftOut,
       secretsRedacted: secrets,
     },
@@ -294,6 +305,9 @@ export class CodeContextProvider {
     }
 
     const perPr = Math.floor((this.options.maxChars ?? MAX_CODE_CHARS) / chosen.length);
+    const terms = ticketTerms(
+      [ticket.summary, ticket.description, ticket.acceptanceCriteria ?? ''].join(' '),
+    );
     const digests: string[] = [];
     const pullRequests: CodePullRequestMeta[] = [];
 
@@ -307,7 +321,7 @@ export class CodeContextProvider {
             this.options.maxFiles ?? 300,
           ),
         ]);
-        const digest = buildPullRequestDigest(full, changed.files, perPr);
+        const digest = buildPullRequestDigest(full, changed.files, perPr, { terms });
         digests.push(digest.text);
         pullRequests.push({ ...digest.meta, matchedIn: match.matchedIn });
         if (changed.truncated) {

@@ -56,7 +56,12 @@ describe('loadConfig', () => {
       GITHUB_TOKEN: 'gh-token',
       GITHUB_REPOS: 'org/api, org/web ,',
     });
-    expect(config.github).toEqual({ token: 'gh-token', repos: ['org/api', 'org/web'] });
+    expect(config.github).toEqual({
+      token: 'gh-token',
+      repos: ['org/api', 'org/web'],
+      codeContext: true,
+      allowCodeToAi: false,
+    });
   });
 
   it('names the missing Jira settings when only some are set', () => {

@@ -175,10 +175,87 @@ describe('code context in a pipeline run', () => {
     expect(result.cases[0]?.grounding).toBe('assumed');
   });
 
+  it('can send everything in one single call: no review, no AI flow step', async () => {
+    const ai = scriptedAI();
+    const { contextFor } = setup(true);
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')], {
+      contextFor,
+      buildFlow: false,
+      generate: { selfReview: false },
+    });
+
+    expect(ai.requests).toHaveLength(1);
+    expect(ai.flowCalls).toBe(0);
+    expect(result.calls).toBe(1);
+    expect(result.flowSource).toBe('fallback');
+    const [only] = ai.requests;
+    expect(only?.prompt).toContain('<ticket key="SHP-1"');
+    expect(only?.prompt).toContain('<code_changes>');
+    expect(only?.system).toContain('ShipNest connects online stores');
+    expect(result.cases.length).toBeGreaterThan(0);
+  });
+
+  it('uses three calls by default: generate, review, flow', async () => {
+    const ai = scriptedAI();
+    const { contextFor } = setup(true);
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')], { contextFor });
+
+    expect(ai.requests).toHaveLength(3);
+    expect(result.calls).toBe(3);
+    expect(result.flowSource).toBe('ai');
+  });
+
   it('gives a different cache identity once the code changes', () => {
     const before = contextHash({ codeChanges: '+const A = 1' });
     const after = contextHash({ codeChanges: '+const A = 2' });
 
     expect(before).not.toBe(after);
+  });
+});
+
+describe('plan in a pipeline run', () => {
+  const plan = [
+    { id: 'B1', behaviour: 'Rates are cleared when the address changes' },
+    { id: 'B2', behaviour: 'Name edits keep the rates' },
+  ];
+
+  it('reports the plan of each ticket and warns about a behaviour no case covers', async () => {
+    const ai = scriptedAI({
+      planFor: () => plan,
+      casesFor: () => [
+        { title: 'Alpha one unique scenario', expected: 'Beta one holds', covers: ['B1'] },
+      ],
+    });
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]?.plan).toEqual({ items: plan, uncovered: ['B2'] });
+    expect(
+      result.warnings.some((w) => w.includes('SHP-1: 1 planned behaviour(s) have no test case')),
+    ).toBe(true);
+    expect(result.warnings.join(' ')).toContain('B2 (Name edits keep the rates)');
+  });
+
+  it('says nothing when every planned behaviour has a case', async () => {
+    const ai = scriptedAI({
+      planFor: () => plan,
+      casesFor: () => [
+        { title: 'Alpha one unique scenario', expected: 'Beta one holds', covers: ['B1'] },
+        { title: 'Gamma two unique scenario', expected: 'Delta two holds', covers: ['B2'] },
+      ],
+    });
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]?.plan?.uncovered).toEqual([]);
+    expect(result.warnings.filter((w) => w.includes('planned behaviour'))).toEqual([]);
+  });
+
+  it('has no plan entry for a ticket that gave none', async () => {
+    const result = await runPipeline(scriptedAI(), [makeTicket('SHP-1')]);
+
+    expect(result.tickets[0]).not.toHaveProperty('plan');
   });
 });
