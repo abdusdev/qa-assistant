@@ -7,8 +7,12 @@
  *
  * Options: --type A,B  --status A,B  --max N  --concurrency N  --no-review
  *          --allow-real-tickets  (needed to send real Jira tickets to Gemini)
- *          --code-context        also read each ticket's pull requests from GitHub
- *          --allow-code-to-ai    (needed with --code-context: source code goes to the AI provider)
+ *          --no-code-context     leave the pull request changes out of this run
+ *          --allow-code-to-ai    agree, for this run, that source code goes to the AI provider
+ *                                (or set ALLOW_CODE_TO_AI=true in .env)
+ *
+ * Code context is included by default for real tickets. Set GITHUB_TOKEN, GITHUB_REPOS and
+ * ALLOW_CODE_TO_AI=true in .env.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -22,7 +26,12 @@ import { resolveInput, type InputMode } from '../jira/resolver.js';
 import type { Ticket } from '../jira/ticket.js';
 import { PROMPT_VERSION } from '../ai/prompt.js';
 import { createTicketCache, migrate, openDatabase, Repository, type Db } from '../db/index.js';
-import { CodeContextProvider, GitHubClient, GitHubError } from '../github/index.js';
+import {
+  CodeContextProvider,
+  GitHubClient,
+  GitHubError,
+  decideCodeContext,
+} from '../github/index.js';
 import { buildKnowledgeContext, loadKnowledge, type Knowledge } from '../knowledge/index.js';
 import { combineContexts } from './context.js';
 import { runPipeline } from './run.js';
@@ -85,32 +94,29 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Code is more sensitive than ticket text, so it has its own switch and its own consent.
+  // The code changes of each ticket are included on every real run. Sending code to the AI provider
+  // is agreed to once (ALLOW_CODE_TO_AI) or per run (--allow-code-to-ai); without it the run stops.
+  const codeDecision = decideCodeContext(config, {
+    realTickets: mode !== 'file',
+    flags: {
+      force: flags.has('code-context'),
+      off: flags.has('no-code-context'),
+      allow: flags.has('allow-code-to-ai'),
+    },
+  });
+  if ('error' in codeDecision) {
+    console.error(codeDecision.error);
+    process.exitCode = 1;
+    return;
+  }
   let codeContext: CodeContextProvider | undefined;
-  if (flags.has('code-context')) {
-    if (!flags.has('allow-code-to-ai')) {
-      console.error(
-        '--code-context would send ShipNest source code (pull request changes) to the AI provider.\n' +
-          'On the free Gemini tier, Google may use that content to improve its products and ' +
-          'reviewers may read it.\nGet approval or use the paid tier, then add --allow-code-to-ai.\n' +
-          'To see exactly what would be sent first, run: npm run github -- context <TICKET-KEY>',
-      );
-      process.exitCode = 1;
-      return;
-    }
-    if (!config.github) {
-      console.error('Set GITHUB_TOKEN and GITHUB_REPOS in .env first.');
-      process.exitCode = 1;
-      return;
-    }
-    if (config.github.repos.length === 0) {
-      console.error('Set GITHUB_REPOS in .env (owner/name, comma-separated) first.');
-      process.exitCode = 1;
-      return;
-    }
+  if (codeDecision.use && config.github) {
     codeContext = new CodeContextProvider(new GitHubClient({ token: config.github.token }), {
-      repos: config.github.repos,
+      repos: codeDecision.repos,
     });
+    console.log(`Code context: on (${codeDecision.repos.join(', ')})`);
+  } else if (!codeDecision.use) {
+    console.log(`${codeDecision.warn ? '! ' : ''}Code context: off, ${codeDecision.reason}`);
   }
 
   let tickets: Ticket[] = [];

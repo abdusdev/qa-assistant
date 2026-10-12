@@ -42,6 +42,8 @@ const envSchema = z
 
     GITHUB_TOKEN: optional(z.string().min(1)),
     GITHUB_REPOS: optional(z.string().min(1)),
+    CODE_CONTEXT: withDefault(z.stringbool().default(true)),
+    ALLOW_CODE_TO_AI: withDefault(z.stringbool().default(false)),
 
     DATABASE_URL: optional(z.url()),
     DB_RETENTION_DAYS: withDefault(z.coerce.number().int().min(1).max(3650).default(90)),
@@ -98,6 +100,13 @@ export interface AppConfig {
   github?: {
     token: string;
     repos: string[];
+    /** Add each ticket's pull request changes to the prompt. On by default. */
+    codeContext: boolean;
+    /**
+     * The person running the tool agrees that source code goes to the AI provider. Without it
+     * code context stops the run instead of silently leaving the code out.
+     */
+    allowCodeToAi: boolean;
   };
   databaseUrl?: string;
   /** Runs and cached results older than this many days are removed by `db purge`. */
@@ -156,6 +165,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
         .split(',')
         .map((repo) => repo.trim())
         .filter(Boolean),
+      codeContext: env.CODE_CONTEXT,
+      allowCodeToAi: env.ALLOW_CODE_TO_AI,
     };
   }
 

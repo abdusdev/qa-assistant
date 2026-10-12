@@ -33,6 +33,8 @@ export type {
 export { GitHubError } from './errors.js';
 export type { GitHubErrorKind } from './errors.js';
 export { classifyFile, rankFiles } from './filter.js';
+export { decideCodeContext } from './settings.js';
+export type { CodeContextDecision, CodeContextRequest } from './settings.js';
 export type { FileKind } from './filter.js';
 export { REDACTED, isSensitivePath, redactSecrets } from './redact.js';
 export type { RedactionResult } from './redact.js';

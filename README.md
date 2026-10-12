@@ -77,11 +77,19 @@ The AI can also see what changed in the code for a ticket. It finds the pull req
 (title, branch name or description), drops lockfiles, generated and private files, replaces anything that looks
 like a secret, and adds the changed lines and the pull request description to the prompt.
 
-1. Set `GITHUB_TOKEN` (a read-only token) and `GITHUB_REPOS` (`owner/name`, comma-separated) in `.env`.
+It is **on by default** for every real run (tickets from Jira), so the code is never quietly missing.
+
+1. In `.env` set `GITHUB_TOKEN` (a read-only token), `GITHUB_REPOS` (`owner/name`, comma-separated) and
+   `ALLOW_CODE_TO_AI=true`. The last one is you agreeing that source code goes to the AI provider: on the free
+   Gemini tier Google may use that content, so get approval or use the paid tier first.
 2. `npm run github -- check` confirms the token can read the repositories.
 3. `npm run github -- context SHP-1234` prints exactly the code text that would be sent. It makes no AI call.
-4. `npm run pipeline -- ... --code-context --allow-code-to-ai` uses it. Source code goes to the AI provider, so the
-   second flag is required: on the free Gemini tier Google may use that content. Get approval or use the paid tier.
+4. `npm run pipeline -- ticket SHP-1234 --allow-real-tickets` now includes it.
+
+Without `ALLOW_CODE_TO_AI` the run **stops** with an explanation instead of leaving the code out unnoticed.
+Per run: `--no-code-context` leaves it out, `--allow-code-to-ai` agrees for that run only. `CODE_CONTEXT=false` in
+`.env` turns it off everywhere. Example ticket files never use it, and a missing `GITHUB_TOKEN` is reported as a
+warning at the top of the run.
 
 A ticket with no pull request is generated from its own text, with a warning. A code overview of a whole module
 can be drafted with `npm run digest` and is used only after a person has reviewed it (see `knowledge/README.md`).
