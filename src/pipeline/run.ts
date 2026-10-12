@@ -165,6 +165,7 @@ export async function runPipeline(
 
     try {
       const context = (await options.contextFor?.(ticket)) ?? {};
+      if (context.warnings) warnings.push(...context.warnings);
 
       // A ticket that has not changed since an earlier run does not cost another AI call.
       const hit = await options.cache?.get(ticket, context).catch(() => undefined);

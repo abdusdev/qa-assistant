@@ -25,6 +25,8 @@ export interface KnowledgeOptions {
   maxPastCases?: number;
   /** A past case must be at least this similar to the ticket. Default 0.06. */
   minCaseSimilarity?: number;
+  /** Most reviewed code overviews added to one ticket. Default 1. */
+  maxCodeNotes?: number;
 }
 
 const lower = (value: string) => value.toLowerCase().trim();
@@ -140,6 +142,8 @@ export function matchPastCases(
 /** What was chosen for a ticket and why. Shown to QA, never sent to the AI. */
 export interface ContextMeta {
   modules: { name: string; score: number; reasons: string[] }[];
+  /** Reviewed code overviews that were added. Left out when there are none. */
+  codeNotes?: { name: string; score: number; reasons: string[] }[];
   pastCases: { title: string; source: string; score: number }[];
   hasProductKnowledge: boolean;
 }
@@ -166,14 +170,28 @@ export function buildKnowledgeContext(
     options,
   );
 
+  const codeNotes = matchModules(knowledge.codeNotes ?? [], ticket, {
+    ...options,
+    maxModules: options.maxCodeNotes ?? 1,
+  });
+  const notes = [
+    ...modules.map((m) => `## Module: ${m.module.name}\n${m.module.body}`),
+    ...codeNotes.map((m) => `## Code overview: ${m.module.name}\n${m.module.body}`),
+  ];
+
   return {
     ...(fixed.length > 0 && { productKnowledge: fixed.join('\n\n') }),
-    ...(modules.length > 0 && {
-      moduleNotes: modules.map((m) => `## Module: ${m.module.name}\n${m.module.body}`).join('\n\n'),
-    }),
+    ...(notes.length > 0 && { moduleNotes: notes.join('\n\n') }),
     ...(cases.length > 0 && { pastCases: cases.map((m) => formatPastCase(m.case)) }),
     meta: {
       modules: modules.map((m) => ({ name: m.module.name, score: m.score, reasons: m.reasons })),
+      ...(codeNotes.length > 0 && {
+        codeNotes: codeNotes.map((m) => ({
+          name: m.module.name,
+          score: m.score,
+          reasons: m.reasons,
+        })),
+      }),
       pastCases: cases.map((m) => ({
         title: m.case.title,
         source: m.case.source,

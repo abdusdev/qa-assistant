@@ -69,6 +69,30 @@ describe('testCaseSchema', () => {
     ).toBe(false);
   });
 
+  it.each([
+    ['ticket', 'ticket'],
+    ['acceptance_criteria', 'acceptance_criteria'],
+    ['module_notes', 'module_notes'],
+    ['past_cases', 'past_cases'],
+    ['code_changes', 'code_changes'],
+    ['Code changes', 'code_changes'],
+    ['code-changes', 'code_changes'],
+    ['Acceptance criteria', 'acceptance_criteria'],
+    ['  Module Notes ', 'module_notes'],
+    ['past case', 'past_cases'],
+    ['code', 'code_changes'],
+    ['comment', 'comment'],
+    ['inferred', 'inferred'],
+    ['something else', 'inferred'],
+  ])('reads the source name "%s" as %s', (written, expected) => {
+    const parsed = testCaseSchema.parse({
+      ...validCase,
+      sources: [{ from: written, quote: 'a quote' }],
+    });
+
+    expect(parsed.sources[0]?.from).toBe(expected);
+  });
+
   it('rejects text that is far too long', () => {
     expect(testCaseSchema.safeParse({ ...validCase, title: 'x'.repeat(201) }).success).toBe(false);
     expect(testCaseSchema.safeParse({ ...validCase, expected: 'x'.repeat(1001) }).success).toBe(

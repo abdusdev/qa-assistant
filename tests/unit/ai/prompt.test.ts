@@ -3,6 +3,7 @@ import {
   buildGenerationPrompt,
   buildRepairPrompt,
   buildReviewPrompt,
+  MAX_CODE_CHARS,
   neutralizeTags,
   PROMPT_VERSION,
 } from '../../../src/ai/prompt.js';
@@ -163,6 +164,40 @@ describe('buildGenerationPrompt', () => {
       expect(prompt).toContain('<past_cases>\nTC-31 Shipment cannot be created without a rate');
       expect(prompt).toContain('TC-32 Rate expires');
       expect(prompt).toContain('<code_changes>\nshipping.service.ts');
+    });
+
+    it('teaches the model how to read code changes only when there are some', () => {
+      const withCode = buildGenerationPrompt(ticket(), { codeChanges: '+const A = 1' });
+      const without = buildGenerationPrompt(ticket(), {});
+      const blank = buildGenerationPrompt(ticket(), { codeChanges: '  ' });
+
+      expect(withCode.system).toContain('## Code changes');
+      expect(withCode.system).toContain('a removed line is no longer true');
+      expect(without.system).not.toContain('## Code changes');
+      expect(blank.system).toBe(without.system);
+      expect(blank.prompt).toBe(without.prompt);
+    });
+
+    it('lets code changes use more room than notes, and cuts them at the limit', () => {
+      const long = 'x'.repeat(MAX_CODE_CHARS + 500);
+      const { prompt } = buildGenerationPrompt(ticket(), { codeChanges: long, moduleNotes: long });
+
+      const code = /<code_changes>\n([\s\S]*?)\n<\/code_changes>/.exec(prompt)?.[1] ?? '';
+      const notes = /<module_notes>\n([\s\S]*?)\n<\/module_notes>/.exec(prompt)?.[1] ?? '';
+      expect(code.length).toBeGreaterThan(notes.length);
+      expect(code.length).toBe(MAX_CODE_CHARS + '\n[truncated]'.length);
+      expect(code).toContain('[truncated]');
+    });
+
+    it('never puts warnings or the report into the prompt', () => {
+      const { prompt, system } = buildGenerationPrompt(ticket(), {
+        warnings: ['SHP-4103: no pull request mentions this ticket'],
+        meta: { code: { status: 'none' } },
+      });
+
+      expect(prompt).not.toContain('no pull request');
+      expect(system).not.toContain('no pull request');
+      expect(prompt).not.toContain('"status"');
     });
 
     it('adds nothing for empty context', () => {

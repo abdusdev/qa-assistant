@@ -20,6 +20,8 @@ export default defineConfig({
         'src/pipeline/cli.ts',
         'src/db/cli.ts',
         'src/knowledge/cli.ts',
+        'src/github/cli.ts',
+        'src/github/digest-cli.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {

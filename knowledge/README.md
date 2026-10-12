@@ -10,7 +10,9 @@ knowledge/
 ├── standards.md        what a good test case is for this team       (sent with every ticket)
 ├── modules/            one note per module                          (only the matching one is sent)
 │   └── shipments.md
-└── past-cases/         approved cases, as examples                  (the most similar few are sent)
+├── past-cases/         approved cases, as examples                  (the most similar few are sent)
+│   └── shipments.md
+└── codebase/           reviewed code overviews of modules           (only the matching one is sent)
     └── shipments.md
 ```
 
@@ -72,3 +74,20 @@ npm run knowledge -- check          # what was found, what is missing, how long 
 
 Secrets, customer names or personal data, internal URLs with tokens. These files are sent to the AI
 provider with the tickets.
+
+## Code overviews (optional)
+
+`npm run digest` drafts an overview of a module from its source files: screens and visible texts, validation
+rules, endpoints, statuses. It is an AI draft, so it is **not used** until a person has read it against the code,
+corrected it, and changed `reviewed: false` to `reviewed: true` in its header.
+
+```bash
+npm run digest -- list app_2/src/modules                       # which modules exist
+npm run digest -- plan Shipments app_2/src/modules/shipments    # which files would be read (no AI call)
+npm run digest -- generate Shipments app_2/src/modules/shipments --allow-code-to-ai
+```
+
+The draft lists the files it read and the ones it left out at the bottom (inside a comment). Add the Jira
+components, labels and keywords in its header so tickets can find it. A reviewed overview is added to a ticket's
+module notes under "Code overview". Source code goes to the AI provider when this runs, so use the paid tier or
+get approval first.
