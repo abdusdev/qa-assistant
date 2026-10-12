@@ -91,6 +91,11 @@ Per run: `--no-code-context` leaves it out, `--allow-code-to-ai` agrees for that
 `.env` turns it off everywhere. Example ticket files never use it, and a missing `GITHUB_TOKEN` is reported as a
 warning at the top of the run.
 
+**One prompt, one call.** `--single-call` sends the ticket, the product knowledge and the code changes in one prompt
+and makes one AI call per ticket (no self-review, no AI ordering of the flow, which is grouped by each case's own
+step). It uses about half the tokens. Without it a ticket makes three calls: generate, review (the same prompt plus
+the draft) and flow (case titles only). `--print-prompt` prints the exact prompt for each ticket and sends nothing.
+
 A ticket with no pull request is generated from its own text, with a warning. A code overview of a whole module
 can be drafted with `npm run digest` and is used only after a person has reviewed it (see `knowledge/README.md`).
 

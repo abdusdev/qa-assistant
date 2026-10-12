@@ -175,6 +175,38 @@ describe('code context in a pipeline run', () => {
     expect(result.cases[0]?.grounding).toBe('assumed');
   });
 
+  it('can send everything in one single call: no review, no AI flow step', async () => {
+    const ai = scriptedAI();
+    const { contextFor } = setup(true);
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')], {
+      contextFor,
+      buildFlow: false,
+      generate: { selfReview: false },
+    });
+
+    expect(ai.requests).toHaveLength(1);
+    expect(ai.flowCalls).toBe(0);
+    expect(result.calls).toBe(1);
+    expect(result.flowSource).toBe('fallback');
+    const [only] = ai.requests;
+    expect(only?.prompt).toContain('<ticket key="SHP-1"');
+    expect(only?.prompt).toContain('<code_changes>');
+    expect(only?.system).toContain('ShipNest connects online stores');
+    expect(result.cases.length).toBeGreaterThan(0);
+  });
+
+  it('uses three calls by default: generate, review, flow', async () => {
+    const ai = scriptedAI();
+    const { contextFor } = setup(true);
+
+    const result = await runPipeline(ai, [makeTicket('SHP-1')], { contextFor });
+
+    expect(ai.requests).toHaveLength(3);
+    expect(result.calls).toBe(3);
+    expect(result.flowSource).toBe('ai');
+  });
+
   it('gives a different cache identity once the code changes', () => {
     const before = contextHash({ codeChanges: '+const A = 1' });
     const after = contextHash({ codeChanges: '+const A = 2' });
