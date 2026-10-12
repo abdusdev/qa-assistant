@@ -13,6 +13,23 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A real Postgres server, so the database tests also run against the production driver.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa
+          POSTGRES_PASSWORD: qa
+          POSTGRES_DB: qa_assistant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qa -d qa_assistant_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://qa:qa@localhost:5432/qa_assistant_test
     steps:
       - uses: actions/checkout@v4
 

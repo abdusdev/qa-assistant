@@ -80,7 +80,7 @@ describe('JiraClient', () => {
       const requested = new URL(String(url));
       expect(requested.origin + requested.pathname).toBe(`${BASE_URL}/rest/api/3/issue/SHP-4085`);
       expect(requested.searchParams.get('fields')).toBe(
-        'summary,description,status,issuetype,parent,labels,fixVersions,comment',
+        'summary,description,status,issuetype,parent,labels,fixVersions,comment,updated',
       );
 
       const headers = init?.headers as Record<string, string>;
@@ -440,6 +440,7 @@ describe('JiraClient', () => {
           'labels',
           'fixVersions',
           'comment',
+          'updated',
         ],
         maxResults: 100,
       });

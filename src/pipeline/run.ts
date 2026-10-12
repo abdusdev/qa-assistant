@@ -25,6 +25,18 @@ export interface Pricing {
   outputPerMillion: number;
 }
 
+/** What the pipeline needs from a result cache. The database provides one. */
+export interface TicketCache {
+  get(ticket: Ticket, context: PromptContext): Promise<CachedTicketResult | undefined>;
+  put(ticket: Ticket, context: PromptContext, result: CachedTicketResult): Promise<void>;
+}
+
+export interface CachedTicketResult {
+  cases: TestCase[];
+  detail: { sufficient: boolean; missing: string[] };
+  model: string;
+}
+
 export interface PipelineOptions {
   /** Tickets processed at the same time. Default 3. */
   concurrency?: number;
@@ -45,6 +57,8 @@ export interface PipelineOptions {
   maxConsecutiveRateLimits?: number;
   /** Used to estimate the cost of the run. */
   pricing?: Pricing;
+  /** Results of earlier runs. A ticket that has not changed is not sent to the AI again. */
+  cache?: TicketCache;
 }
 
 export interface TicketOutcome {
@@ -56,6 +70,8 @@ export interface TicketOutcome {
   reviewNote?: string;
   /** The model that answered, useful when several models are configured. */
   model?: string;
+  /** True when the cases came from an earlier run and the AI was not called. */
+  cached?: boolean;
   /** Whether the ticket said enough to write reliable cases, and what was missing. */
   detail?: { sufficient: boolean; missing: string[] };
   error?: string;
@@ -147,11 +163,40 @@ export async function runPipeline(
 
     try {
       const context = (await options.contextFor?.(ticket)) ?? {};
+
+      // A ticket that has not changed since an earlier run does not cost another AI call.
+      const hit = await options.cache?.get(ticket, context).catch(() => undefined);
+      if (hit) {
+        casesByTicket[index] = hit.cases;
+        outcomes[index] = {
+          ticket: ticket.key,
+          status: 'ok',
+          cases: hit.cases.length,
+          cached: true,
+          model: hit.model,
+          detail: hit.detail,
+        };
+        done++;
+        emit({ type: 'ticket_done', ticket: ticket.key, cases: hit.cases.length, done, total });
+        return;
+      }
+
       const result = await generateTestCases(provider, ticket, {
         ...options.generate,
         context,
         usage: tracker,
       });
+
+      // Only a finished result is remembered: a draft whose review failed should be retried later.
+      if (result.reviewed || options.generate?.selfReview === false) {
+        await options.cache
+          ?.put(ticket, context, {
+            cases: result.cases,
+            detail: result.detail,
+            model: result.model,
+          })
+          .catch(() => undefined);
+      }
 
       casesByTicket[index] = result.cases;
       outcomes[index] = {

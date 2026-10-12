@@ -36,6 +36,7 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 | `npm run typecheck`                                                 | Type-check the code                                                                                        |
 | `npm run check`                                                     | Everything CI runs: lint, format, types, unit and e2e                                                      |
 | `npm run pipeline -- file evals/tickets/example-bulk-shipment.json` | Run the whole pipeline by hand: tickets in, cases and flow out                                             |
+| `npm run db -- migrate`                                             | Create or update the database tables (also `status`, `rollback`, `purge`, `runs`)                          |
 | `npm run eval`                                                      | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI) |
 | `npm run ai:check`                                                  | Make one tiny call to the AI provider set in `.env` and print the answer and token use                     |
 | `npm run jira:check`                                                | Check that the Jira settings in `.env` work (who you are, can you see the project)                         |
@@ -60,6 +61,16 @@ First time running the end-to-end tests: `npx playwright install chromium`.
 | `tests/unit/`  | Unit tests (Vitest), mirroring `src/`     |
 | `tests/e2e/`   | End-to-end tests (Playwright)             |
 | `docs/`        | Project plan and notes                    |
+
+## Database
+
+Set `DATABASE_URL` in `.env` to save runs and reuse results for tickets that have not changed:
+
+- a Postgres server: `docker compose up -d`, then `DATABASE_URL=postgres://qa:qa@localhost:5432/qa_assistant`
+- no server: `DATABASE_URL=pglite://./.data/qa-assistant` (a Postgres kept in a local folder)
+
+The tables are created automatically by `npm run pipeline`, or by hand with `npm run db -- migrate`.
+Runs and cached results older than `DB_RETENTION_DAYS` (default 90) are removed by `npm run db -- purge`.
 
 ## Workflow
 

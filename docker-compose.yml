@@ -1,0 +1,22 @@
+# Local Postgres for development:  docker compose up -d
+# Then set in .env:  DATABASE_URL=postgres://qa:qa@localhost:5432/qa_assistant
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qa
+      POSTGRES_PASSWORD: qa
+      POSTGRES_DB: qa_assistant
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - qa_assistant_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U qa -d qa_assistant']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  qa_assistant_data:

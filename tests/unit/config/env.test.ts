@@ -8,6 +8,7 @@ describe('loadConfig', () => {
       env: 'development',
       port: 3000,
       logLevel: 'info',
+      databaseRetentionDays: 90,
       ai: { provider: 'fake', maxOutputTokens: 8192, fallbackModels: [] },
     });
   });

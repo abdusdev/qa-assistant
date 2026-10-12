@@ -5,7 +5,8 @@
     "type": "Bug",
     "status": "Done",
     "description": "When a seller changes the Ship To address of an order, the courier rates fetched earlier may be wrong for the new address, but the order can still be shipped with them.\n\nExpected behaviour:\n- After the Ship To address is saved, previously fetched rates are marked outdated.\n- The seller sees the warning \"Ship To address has changed. Please fetch new rates before shipping this order.\"\n- The Ship button stays disabled until new rates are fetched and one is selected.\n- Changing only the phone number or the order notes does not outdate the rates.",
-    "acceptanceCriteria": "1. Changing street, city, postcode or country marks rates as outdated and shows the warning.\n2. Shipping is blocked until new rates are fetched and selected.\n3. Changing the phone number or notes keeps the rates valid."
+    "acceptanceCriteria": "1. Changing street, city, postcode or country marks rates as outdated and shows the warning.\n2. Shipping is blocked until new rates are fetched and selected.\n3. Changing the phone number or notes keeps the rates valid.",
+    "updated": "2026-10-01T10:00:00.000+0100"
   },
   "reference": [
     {
