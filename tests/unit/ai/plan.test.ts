@@ -8,11 +8,11 @@ import type { Ticket } from '../../../src/jira/ticket.js';
 const ticket: Ticket = {
   key: 'SHP-4103',
   url: 'https://example.atlassian.net/browse/SHP-4103',
-  summary: 'Order can be shipped after the Ship To address changes',
+  summary: 'A shipment can be booked after the destination changes',
   type: 'Bug',
   status: 'Review',
   description:
-    'When the Ship To address changes the old rates stay available and the user can ship the ' +
+    'When the destination changes earlier quotes stay selectable and the user can ship the ' +
     'order. Shipping should be blocked until new rates are fetched and a rate is selected.',
   labels: [],
   fixVersions: [],

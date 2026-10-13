@@ -17,9 +17,9 @@ const ticket: Ticket = {
   type: 'Bug',
   status: 'Done',
   description:
-    'When the seller changes the Ship To address, the old rates stay available. ' +
+    'When the seller edits the destination, earlier quotes stay selectable. ' +
     'Shipping must be blocked until new rates are fetched. ' +
-    'Suggested warning: "Ship To address has changed. Please fetch new rates before shipping."',
+    'Suggested warning: "The destination changed. Fetch new quotes before booking."',
   labels: ['Regression'],
   fixVersions: [],
   acceptanceCriteria:
@@ -57,7 +57,7 @@ describe('appearsIn', () => {
 
   it('ignores markdown decoration and quote marks', () => {
     expect(appearsIn('**Shipping** must be `blocked`', ticket.description)).toBe(true);
-    expect(appearsIn('Ship To address has changed', ticket.description)).toBe(true);
+    expect(appearsIn('The destination changed', ticket.description)).toBe(true);
   });
 
   it('accepts a lightly paraphrased longer excerpt', () => {
@@ -74,8 +74,8 @@ describe('appearsIn', () => {
   });
 
   it('is exact only for very short quotes', () => {
-    expect(appearsIn('rates stay', ticket.description)).toBe(true);
-    expect(appearsIn('rates vanish', ticket.description)).toBe(false);
+    expect(appearsIn('quotes stay', ticket.description)).toBe(true);
+    expect(appearsIn('quotes vanish', ticket.description)).toBe(false);
   });
 
   it('rejects an empty quote', () => {
@@ -300,7 +300,7 @@ describe('groundCase', () => {
     const result = groundCase(
       testCase({
         expected:
-          'The warning "Ship To address has changed. Please fetch new rates before shipping." is shown',
+          'The warning "The destination changed. Fetch new quotes before booking." is shown',
         sources: [{ from: 'ticket', quote: 'Suggested warning' }],
       }),
       evidence,
