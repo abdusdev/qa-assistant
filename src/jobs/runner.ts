@@ -71,6 +71,17 @@ export function createRunner(deps: RunnerDeps): JobRunner {
   return async ({ input, signal, report }: RunnerContext) => {
     report({ type: 'stage', stage: 'resolving' });
 
+    // Writing one ticket again updates a saved run in place, so the run must exist.
+    const regenerating = input.regenerateRunId;
+    if (regenerating !== undefined) {
+      if (!deps.repository) {
+        throw new RunError('Writing a ticket again needs the database (DATABASE_URL).');
+      }
+      if (!(await deps.repository.getRun(regenerating))) {
+        throw new RunError('The run to update does not exist.');
+      }
+    }
+
     const resolved = await resolveInput(
       deps.tickets,
       {
@@ -125,21 +136,25 @@ export function createRunner(deps: RunnerDeps): JobRunner {
 
     const selfReview = input.selfReview ?? true;
     const repo = deps.repository;
-    const runId = repo
-      ? await repo.createRun({
-          mode: input.mode,
-          value: input.value.slice(0, 500),
-          filters: { ...input.filters, ...(input.max !== undefined && { max: input.max }) },
-          promptVersion: PROMPT_VERSION,
-        })
-      : undefined;
-    const cache = repo
-      ? createTicketCache(repo, {
-          promptVersion: PROMPT_VERSION,
-          model: deps.config.ai.model ?? deps.provider.name,
-          selfReview,
-        })
-      : undefined;
+    const runId =
+      regenerating ??
+      (repo
+        ? await repo.createRun({
+            mode: input.mode,
+            value: input.value.slice(0, 500),
+            filters: { ...input.filters, ...(input.max !== undefined && { max: input.max }) },
+            promptVersion: PROMPT_VERSION,
+          })
+        : undefined);
+    // A result from the cache would be the same cases again, which is not what was asked for.
+    const cache =
+      repo && regenerating === undefined
+        ? createTicketCache(repo, {
+            promptVersion: PROMPT_VERSION,
+            model: deps.config.ai.model ?? deps.provider.name,
+            selfReview,
+          })
+        : undefined;
 
     let result: PipelineResult;
     try {
@@ -147,6 +162,7 @@ export function createRunner(deps: RunnerDeps): JobRunner {
         signal,
         contextFor,
         generate: { selfReview },
+        ...(regenerating !== undefined && { buildFlow: false }),
         ...(cache && { cache }),
         ...(deps.ticketConcurrency !== undefined && { concurrency: deps.ticketConcurrency }),
         onProgress: (event) => {
@@ -188,7 +204,7 @@ export function createRunner(deps: RunnerDeps): JobRunner {
       });
     } catch (error) {
       // A run that stops (for example a rejected key) must not stay marked as running.
-      if (repo && runId) {
+      if (repo && runId && regenerating === undefined) {
         await repo
           .failRun(runId, error instanceof Error ? error.message : String(error))
           .catch(() => undefined);
@@ -197,7 +213,20 @@ export function createRunner(deps: RunnerDeps): JobRunner {
     }
 
     const warnings = [...resolved.warnings, ...result.warnings];
-    if (repo && runId) {
+    if (repo && runId && regenerating !== undefined) {
+      // Only a ticket that was written successfully replaces the old cases. On a failure
+      // or a cancel the run is left exactly as it was.
+      const outcome = result.tickets[0];
+      if (result.cancelled) throw new RunError('Cancelled. The run was left as it was.');
+      if (!outcome || outcome.status !== 'ok') {
+        throw new RunError(
+          `The ticket could not be written again, so the run was left as it was: ${outcome?.error ?? 'no answer'}`,
+        );
+      }
+      report({ type: 'stage', stage: 'saving' });
+      const ticketKey = resolved.tickets[0]?.key ?? input.value;
+      await repo.replaceTicketCases(runId, ticketKey, result.cases);
+    } else if (repo && runId) {
       report({ type: 'stage', stage: 'saving' });
       await repo.saveResult(runId, { ...result, warnings });
     }

@@ -549,6 +549,8 @@ describe.each(backends())('database on $name', (backend) => {
         edited: 1,
         deleted: 1,
         added: 1,
+        approved: 0,
+        total: 4,
         keptShare: 0.75,
       });
     });

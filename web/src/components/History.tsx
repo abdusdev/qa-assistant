@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api.js';
-import type { ApiRun, ApiRunSummary } from '../lib/types.js';
-import { viewOfRun } from '../lib/view.js';
-import { Results } from './Results.js';
+import type { ApiRunSummary } from '../lib/types.js';
 
 const STATUS_STYLE: Record<ApiRunSummary['status'], string> = {
   running: 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200',
@@ -103,51 +101,5 @@ export function History() {
         </ul>
       )}
     </section>
-  );
-}
-
-export function RunView({ id }: { id: string }) {
-  const loaded = useLoad<ApiRun>(() => api.run(id), id);
-
-  if (loaded.state === 'loading') {
-    return (
-      <p role="status" className="text-slate-600 dark:text-slate-400">
-        Loading the run...
-      </p>
-    );
-  }
-  if (loaded.state === 'error') {
-    return (
-      <div
-        role="alert"
-        className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
-      >
-        <p className="font-semibold text-rose-900 dark:text-rose-200">
-          {loaded.error.status === 404 ? 'There is no such run' : 'The run could not be loaded'}
-        </p>
-        <p className="mt-1 text-sm text-rose-900 dark:text-rose-200">{loaded.error.message}</p>
-      </div>
-    );
-  }
-
-  const run = loaded.value;
-  return (
-    <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-lg font-semibold">
-          {run.inputMode} {run.inputValue}
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          {when(run.createdAt)} · {run.status}
-          {run.model && ` · ${run.model}`}
-        </p>
-        {run.error && (
-          <p role="alert" className="mt-2 text-sm text-rose-700 dark:text-rose-300">
-            {run.error}
-          </p>
-        )}
-      </section>
-      <Results view={viewOfRun(run)} durationMs={run.durationMs} calls={run.calls} />
-    </div>
   );
 }

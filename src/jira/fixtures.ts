@@ -11,20 +11,22 @@ import type { TicketSource } from './resolver.js';
  * whole system offline (tests, demos). Searches ignore the query and return every file.
  */
 export class FixtureTicketSource implements TicketSource {
-  private cache: Ticket[] | undefined;
+  /** The files are read once. Callers that arrive while it is going wait for the same read. */
+  private loading: Promise<Ticket[]> | undefined;
 
   constructor(private readonly directory: string) {}
 
-  private async tickets(): Promise<Ticket[]> {
-    if (!this.cache) {
+  private tickets(): Promise<Ticket[]> {
+    this.loading ??= (async () => {
       const names = (await readdir(this.directory)).filter((n) => n.endsWith('.json')).sort();
-      this.cache = [];
+      const tickets: Ticket[] = [];
       for (const name of names) {
         const { ticket } = await loadEvalFile(path.join(this.directory, name));
-        this.cache.push(ticket);
+        tickets.push(ticket);
       }
-    }
-    return this.cache;
+      return tickets;
+    })();
+    return this.loading;
   }
 
   async getIssue(rawKey: string): Promise<Ticket> {

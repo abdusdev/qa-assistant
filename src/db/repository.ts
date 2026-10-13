@@ -52,6 +52,8 @@ export interface StoredCase extends TestCase {
   runId: string;
   position: number;
   state: CaseState;
+  /** A person has read this case and accepted it. Editing a case takes the approval back. */
+  approved: boolean;
   updatedAt: Date;
 }
 
@@ -80,6 +82,10 @@ export interface RunStats {
   deleted: number;
   /** Cases QA added by hand. */
   added: number;
+  /** Cases (not deleted) that a person approved. */
+  approved: number;
+  /** Cases that are not deleted. */
+  total: number;
   /** Share of the AI's cases that survived (kept or edited), from 0 to 1. */
   keptShare: number;
 }
@@ -160,6 +166,7 @@ interface CaseRow {
   origin: 'generated' | 'added';
   edited: boolean;
   deleted: boolean;
+  approved: boolean;
   updated_at: Date;
 }
 
@@ -188,6 +195,7 @@ const toCase = (row: CaseRow): StoredCase => ({
   covers: row.covers,
   grounding: row.grounding,
   state: stateOf(row),
+  approved: row.approved,
   updatedAt: row.updated_at,
 });
 
@@ -432,7 +440,15 @@ export class Repository {
   private async addRevision(
     db: Db,
     uid: string,
-    type: 'created' | 'edited' | 'deleted' | 'restored',
+    type:
+      | 'created'
+      | 'edited'
+      | 'deleted'
+      | 'restored'
+      | 'approved'
+      | 'unapproved'
+      | 'moved'
+      | 'replaced',
     by: string,
     before: unknown,
     after: unknown,
@@ -473,7 +489,8 @@ export class Repository {
       });
 
       await tx.query(
-        `UPDATE test_cases SET ${sets.join(', ')}, edited = true, updated_at = now() WHERE id = $1`,
+        `UPDATE test_cases SET ${sets.join(', ')}, edited = true, approved = false, approved_at = NULL,
+           updated_at = now() WHERE id = $1`,
         [uid, ...values],
       );
       const after = await this.caseRow(tx, uid);
@@ -548,6 +565,152 @@ export class Repository {
     });
   }
 
+  async getCase(uid: string): Promise<StoredCase | undefined> {
+    const { rows } = await this.db.query<CaseRow>('SELECT * FROM test_cases WHERE id = $1', [uid]);
+    return rows[0] ? toCase(rows[0]) : undefined;
+  }
+
+  /** Approves or un-approves a case. A deleted case cannot be approved. Returns false if it cannot. */
+  async setApproved(uid: string, approved: boolean, changedBy = 'unknown'): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const { rows } = await tx.query<CaseRow>(
+        'SELECT * FROM test_cases WHERE id = $1 FOR UPDATE',
+        [uid],
+      );
+      const row = rows[0];
+      if (!row || row.deleted) return false;
+      if (row.approved === approved) return true;
+
+      await tx.query(
+        `UPDATE test_cases SET approved = $2, approved_at = ${approved ? 'now()' : 'NULL'},
+           updated_at = now() WHERE id = $1`,
+        [uid, approved],
+      );
+      await this.addRevision(
+        tx,
+        uid,
+        approved ? 'approved' : 'unapproved',
+        changedBy,
+        snapshot(row),
+        snapshot(row),
+      );
+      return true;
+    });
+  }
+
+  /** Approves every case of a run that is not deleted and not yet approved. Returns how many. */
+  async approveAll(runId: string, changedBy = 'unknown'): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      const { rows } = await tx.query<CaseRow>(
+        `SELECT * FROM test_cases WHERE run_id = $1 AND NOT deleted AND NOT approved
+         ORDER BY position FOR UPDATE`,
+        [runId],
+      );
+      for (const row of rows) {
+        await tx.query(
+          'UPDATE test_cases SET approved = true, approved_at = now(), updated_at = now() WHERE id = $1',
+          [row.id],
+        );
+        await this.addRevision(tx, row.id, 'approved', changedBy, snapshot(row), snapshot(row));
+      }
+      return rows.length;
+    });
+  }
+
+  /**
+   * Moves a case one place up or down inside its flow step, by swapping with its neighbour that
+   * is not deleted. Returns false when there is no neighbour in that direction.
+   */
+  async moveCase(uid: string, direction: 'up' | 'down', changedBy = 'unknown'): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const { rows } = await tx.query<CaseRow>(
+        'SELECT * FROM test_cases WHERE id = $1 FOR UPDATE',
+        [uid],
+      );
+      const row = rows[0];
+      if (!row || row.deleted) return false;
+
+      const neighbours = await tx.query<CaseRow>(
+        `SELECT * FROM test_cases
+         WHERE run_id = $1 AND flow_step = $2 AND NOT deleted AND position ${direction === 'up' ? '<' : '>'} $3
+         ORDER BY position ${direction === 'up' ? 'DESC' : 'ASC'} LIMIT 1 FOR UPDATE`,
+        [row.run_id, row.flow_step, row.position],
+      );
+      const other = neighbours.rows[0];
+      if (!other) return false;
+
+      await tx.query('UPDATE test_cases SET position = $2, updated_at = now() WHERE id = $1', [
+        row.id,
+        other.position,
+      ]);
+      await tx.query('UPDATE test_cases SET position = $2 WHERE id = $1', [other.id, row.position]);
+      await this.addRevision(tx, row.id, 'moved', changedBy, snapshot(row), snapshot(row));
+      return true;
+    });
+  }
+
+  /**
+   * Swaps the cases the AI wrote for one ticket with a new set, keeping everything else. The old
+   * generated cases are marked deleted (and stay in the history); cases QA added by hand for that
+   * ticket are kept. New cases get the next free TC numbers and are appended to their flow step.
+   */
+  async replaceTicketCases(
+    runId: string,
+    ticket: string,
+    cases: TestCase[],
+    changedBy = 'unknown',
+  ): Promise<{ removed: number; added: number }> {
+    return this.db.transaction(async (tx) => {
+      const old = await tx.query<CaseRow>(
+        `SELECT * FROM test_cases
+         WHERE run_id = $1 AND ticket_key = $2 AND origin = 'generated' AND NOT deleted
+         FOR UPDATE`,
+        [runId, ticket],
+      );
+      for (const row of old.rows) {
+        await tx.query(
+          'UPDATE test_cases SET deleted = true, approved = false, approved_at = NULL, updated_at = now() WHERE id = $1',
+          [row.id],
+        );
+        await this.addRevision(tx, row.id, 'replaced', changedBy, snapshot(row), null);
+      }
+
+      const next = await tx.query<{ position: number; number: number }>(
+        `SELECT COALESCE(MAX(position) + 1, 0)::int AS position,
+                COALESCE(MAX(NULLIF(regexp_replace(code, '[^0-9]', '', 'g'), '')::int), 0)::int AS number
+         FROM test_cases WHERE run_id = $1`,
+        [runId],
+      );
+      let { position, number } = next.rows[0] as { position: number; number: number };
+
+      const steps = await tx.query<{ name: string; position: number }>(
+        'SELECT name, position FROM flow_steps WHERE run_id = $1',
+        [runId],
+      );
+      const known = new Set(steps.rows.map((step) => step.name));
+      let stepPosition = steps.rows.reduce((max, step) => Math.max(max, step.position), -1) + 1;
+
+      for (const testCase of cases) {
+        if (!known.has(testCase.flow_step)) {
+          await tx.query(
+            "INSERT INTO flow_steps (run_id, position, name, description) VALUES ($1, $2, $3, '')",
+            [runId, stepPosition++, testCase.flow_step],
+          );
+          known.add(testCase.flow_step);
+        }
+        number += 1;
+        await this.insertCase(
+          tx,
+          runId,
+          { ...testCase, id: `TC-${number}`, ticket },
+          position++,
+          'generated',
+        );
+      }
+      return { removed: old.rows.length, added: cases.length };
+    });
+  }
+
   async revisions(uid: string) {
     const { rows } = await this.db.query<{
       revision: number;
@@ -575,13 +738,17 @@ export class Repository {
       edited: number;
       deleted: number;
       added: number;
+      approved: number;
+      total: number;
     }>(
       `SELECT
          count(*) FILTER (WHERE origin = 'generated')::int AS generated,
          count(*) FILTER (WHERE origin = 'generated' AND NOT edited AND NOT deleted)::int AS kept,
          count(*) FILTER (WHERE origin = 'generated' AND edited AND NOT deleted)::int AS edited,
          count(*) FILTER (WHERE origin = 'generated' AND deleted)::int AS deleted,
-         count(*) FILTER (WHERE origin = 'added' AND NOT deleted)::int AS added
+         count(*) FILTER (WHERE origin = 'added' AND NOT deleted)::int AS added,
+         count(*) FILTER (WHERE approved AND NOT deleted)::int AS approved,
+         count(*) FILTER (WHERE NOT deleted)::int AS total
        FROM test_cases WHERE run_id = $1`,
       [runId],
     );

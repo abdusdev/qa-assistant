@@ -135,7 +135,7 @@ npm run dev:web        # or work on it with hot reload at http://localhost:5173 
 - The code-context box sends nothing when ticked (the server uses the code when it is set up for it) and an explicit
   "no" when unticked.
 - The interface is tested in a real browser with the demo AI and fixture tickets (`npm run test:e2e`).
-- Not here yet: editing cases, approving them and exporting from the page (the rest of #12).
+- A finished run is saved, and its page is where cases are reviewed (see "Reviewing a run").
 
 ## API
 
@@ -167,6 +167,27 @@ curl -X POST localhost:3000/api/generate -H 'content-type: application/json'   -
 curl localhost:3000/api/jobs/<jobId>
 ```
 
+## Reviewing a run
+
+Open a saved run (from a finished job or the history) to review it:
+
+- **Edit** a case's title, type, priority, flow step, preconditions, steps, expected result and "to confirm" list.
+  Only the fields you change are saved, and every change is kept as a revision with who made it.
+- **Approve** a case once it has been read and accepted, or approve all. Editing an approved case takes the approval
+  back, so changed text is read again.
+- **Add**, **delete** (and restore) and **move up or down** inside a flow step.
+- **Write one ticket again** replaces the AI's cases for that ticket only. Your edits to those cases are replaced
+  (the old ones stay in the history), cases you added by hand stay, and other tickets are untouched. If the ticket
+  cannot be written, the run is left exactly as it was.
+- **Download** Word, Markdown or CSV of the edited version, optionally only the approved cases. Every file says it is
+  an AI draft that needs QA review.
+- The review bar shows how many cases are approved and how much of the draft survived: kept, edited, deleted, added.
+
+The same actions are in the API: `PATCH /api/cases/:id`, `DELETE /api/cases/:id`, `POST /api/cases/:id/restore`,
+`/approve` and `/move`, `POST /api/runs/:id/cases`, `/approve-all` and `/regenerate`, and
+`GET /api/runs/:id/export?format=docx|md|csv&approved=true`. The person making a change can be named with an
+`X-User` header. This needs the database, which the server always has (see "Database").
+
 ## Export
 
 `npm run export` writes a run as a document for people who do not read JSON:
@@ -183,7 +204,9 @@ added. Cases are grouped by flow step, in flow order.
 
 ## Database
 
-Set `DATABASE_URL` in `.env` to save runs and reuse results for tickets that have not changed:
+The server always has a database, because history, editing and approving cases need one. With no `DATABASE_URL`
+it keeps a Postgres in `.data/qa-assistant` (nothing to install). The command line only saves runs and reuses
+results for unchanged tickets when `DATABASE_URL` is set. To use a Postgres server instead:
 
 - a Postgres server: `docker compose up -d`, then `DATABASE_URL=postgres://qa:qa@localhost:5432/qa_assistant`
 - no server: `DATABASE_URL=pglite://./.data/qa-assistant` (a Postgres kept in a local folder)

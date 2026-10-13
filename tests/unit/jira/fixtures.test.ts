@@ -32,6 +32,21 @@ describe('FixtureTicketSource', () => {
     expect(one.truncated).toBe(true);
   });
 
+  it('answers callers that arrive while the folder is being read, not from a half-read one', async () => {
+    const shared = source();
+
+    // Callers arrive one event-loop turn apart, so some land in the middle of the first read.
+    const answers: Promise<string>[] = [];
+    for (let i = 0; i < 40; i++) {
+      answers.push(shared.getIssue(i % 2 === 0 ? 'EVAL-1' : 'EVAL-2').then((ticket) => ticket.key));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(await Promise.all(answers)).toEqual(
+      Array.from({ length: 40 }, (_, i) => (i % 2 === 0 ? 'EVAL-1' : 'EVAL-2')),
+    );
+  });
+
   it('works with the input resolver', async () => {
     const resolved = await resolveInput(source(), { mode: 'list', value: 'EVAL-1 EVAL-2' });
 
