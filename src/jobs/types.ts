@@ -17,6 +17,11 @@ export interface GenerateInput {
   useCodeContext?: boolean;
   /** Let the model review its own draft. Default true. */
   selfReview?: boolean;
+  /**
+   * Write the cases of this one ticket again and swap them into a saved run, leaving every other
+   * ticket and every case QA added alone. `mode` is `ticket` and `value` is the ticket key.
+   */
+  regenerateRunId?: string;
 }
 
 export type JobStage = 'queued' | 'resolving' | 'generating' | 'ordering' | 'saving' | 'finished';

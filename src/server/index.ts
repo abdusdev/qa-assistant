@@ -11,6 +11,9 @@ import { checkCodeContext, createRunner } from '../jobs/runner.js';
 import { loadKnowledge } from '../knowledge/index.js';
 import { createApp } from './app.js';
 
+/** What the server uses when DATABASE_URL is not set: a Postgres kept in a local folder. */
+const DEFAULT_DATABASE_URL = 'pglite://./.data/qa-assistant';
+
 /** Used when Jira is not set up: the run fails with a clear message instead of the server not starting. */
 const missingJira: TicketSource = {
   async getIssue() {
@@ -30,13 +33,17 @@ async function main(): Promise<void> {
       ),
   });
 
-  let db: Db | undefined;
-  let repository: Repository | undefined;
-  if (config.databaseUrl) {
-    db = await openDatabase(config.databaseUrl);
-    await migrate(db);
-    repository = new Repository(db);
-  }
+  // The server always has a database, because history, editing and approving need one. With no
+  // DATABASE_URL it keeps a Postgres in a local folder, so there is nothing to install.
+  const databaseUrl = config.databaseUrl ?? DEFAULT_DATABASE_URL;
+  const db: Db = await openDatabase(databaseUrl);
+  await migrate(db);
+  const repository = new Repository(db);
+  console.log(
+    config.databaseUrl
+      ? 'Database: the one set in DATABASE_URL'
+      : `Database: ${databaseUrl} (set DATABASE_URL to use a Postgres server)`,
+  );
 
   const tickets: TicketSource = config.ticketFixturesDir
     ? new FixtureTicketSource(config.ticketFixturesDir)
@@ -57,7 +64,7 @@ async function main(): Promise<void> {
       tickets,
       config,
       knowledge: () => loadKnowledge('knowledge'),
-      ...(repository && { repository }),
+      repository,
     }),
     {
       maxConcurrent: config.maxConcurrentRuns,
@@ -71,7 +78,7 @@ async function main(): Promise<void> {
   const app = createApp(
     {
       jobs,
-      ...(repository && { repository }),
+      repository,
       ...(config.apiToken && { apiToken: config.apiToken }),
       enableRelease: config.jira?.enableRelease ?? false,
       // Real tickets and code go to the AI provider only with the setting that says so.
@@ -97,7 +104,7 @@ async function main(): Promise<void> {
     jobs.cancelAll();
     server.close();
     await jobs.whenIdle();
-    await db?.close();
+    await db.close();
     process.exit(0);
   };
   process.once('SIGTERM', () => void shutdown());

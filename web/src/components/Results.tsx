@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   GROUNDING_LABEL,
   SOURCE_LABEL,
@@ -25,7 +25,14 @@ const PRIORITY_STYLE: Record<string, string> = {
 
 const chip = 'rounded px-2 py-0.5 text-xs font-medium';
 
-export function CaseCard({ testCase }: { testCase: ApiCase }) {
+export function CaseCard({
+  testCase,
+  children,
+}: {
+  testCase: ApiCase;
+  /** Review controls shown at the bottom of the card. */
+  children?: ReactNode;
+}) {
   const sources = testCase.sources.filter((s) => s.from !== 'inferred' || s.quote !== '');
   return (
     <article
@@ -52,6 +59,13 @@ export function CaseCard({ testCase }: { testCase: ApiCase }) {
           <span className={`${chip} ring-1 ${GROUNDING_STYLE[testCase.grounding]}`}>
             {GROUNDING_LABEL[testCase.grounding]}
           </span>
+          {testCase.approved && (
+            <span
+              className={`${chip} bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200`}
+            >
+              Approved
+            </span>
+          )}
         </div>
       </header>
 
@@ -117,6 +131,7 @@ export function CaseCard({ testCase }: { testCase: ApiCase }) {
           )}
         </details>
       )}
+      {children}
     </article>
   );
 }

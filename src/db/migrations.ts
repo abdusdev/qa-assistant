@@ -132,4 +132,23 @@ export const migrations: Migration[] = [
       ALTER TABLE run_tickets DROP COLUMN plan;
     `,
   },
+  {
+    version: 3,
+    name: 'case_review',
+    up: `
+      ALTER TABLE test_cases ADD COLUMN approved boolean NOT NULL DEFAULT false;
+      ALTER TABLE test_cases ADD COLUMN approved_at timestamptz;
+      ALTER TABLE case_revisions DROP CONSTRAINT case_revisions_change_type_check;
+      ALTER TABLE case_revisions ADD CONSTRAINT case_revisions_change_type_check
+        CHECK (change_type IN ('created', 'edited', 'deleted', 'restored', 'approved', 'unapproved', 'moved', 'replaced'));
+    `,
+    down: `
+      DELETE FROM case_revisions WHERE change_type IN ('approved', 'unapproved', 'moved', 'replaced');
+      ALTER TABLE case_revisions DROP CONSTRAINT case_revisions_change_type_check;
+      ALTER TABLE case_revisions ADD CONSTRAINT case_revisions_change_type_check
+        CHECK (change_type IN ('created', 'edited', 'deleted', 'restored'));
+      ALTER TABLE test_cases DROP COLUMN approved_at;
+      ALTER TABLE test_cases DROP COLUMN approved;
+    `,
+  },
 ];

@@ -25,6 +25,8 @@ export default defineConfig({
       AI_PROVIDER: 'fake',
       TICKET_FIXTURES_DIR: 'evals/tickets',
       DATABASE_URL: 'pglite://memory',
+      // Tests run side by side and each starts runs, so they must not queue behind each other.
+      MAX_CONCURRENT_RUNS: '6',
     },
   },
 });

@@ -1,4 +1,12 @@
-import type { ApiErrorBody, ApiJob, ApiRun, ApiRunSummary, GenerateRequest } from './lib/types.js';
+import type { CasePatch, NewCaseBody } from './lib/review.js';
+import type {
+  ApiCase,
+  ApiErrorBody,
+  ApiJob,
+  ApiRun,
+  ApiRunSummary,
+  GenerateRequest,
+} from './lib/types.js';
 
 /** An answer from the API that was an error, with the message it gave. */
 export class ApiError extends Error {
@@ -50,4 +58,41 @@ export const api = {
     call<unknown>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   runs: (limit = 20) => call<{ runs: ApiRunSummary[] }>(`/api/runs?limit=${limit}`),
   run: (id: string) => call<ApiRun>(`/api/runs/${encodeURIComponent(id)}`),
+};
+
+// ---- reviewing a saved run ---------------------------------------------------------------------
+
+const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
+
+export const review = {
+  edit: (uid: string, patch: CasePatch) =>
+    call<ApiCase>(`/api/cases/${encodeURIComponent(uid)}`, { method: 'PATCH', ...json(patch) }),
+  remove: (uid: string) =>
+    call<{ deleted: boolean }>(`/api/cases/${encodeURIComponent(uid)}`, { method: 'DELETE' }),
+  restore: (uid: string) =>
+    call<ApiCase>(`/api/cases/${encodeURIComponent(uid)}/restore`, { method: 'POST' }),
+  approve: (uid: string, approved: boolean) =>
+    call<ApiCase>(`/api/cases/${encodeURIComponent(uid)}/approve`, {
+      method: 'POST',
+      ...json({ approved }),
+    }),
+  move: (uid: string, direction: 'up' | 'down') =>
+    call<{ moved: boolean }>(`/api/cases/${encodeURIComponent(uid)}/move`, {
+      method: 'POST',
+      ...json({ direction }),
+    }),
+  add: (runId: string, body: NewCaseBody) =>
+    call<ApiCase>(`/api/runs/${encodeURIComponent(runId)}/cases`, {
+      method: 'POST',
+      ...json(body),
+    }),
+  approveAll: (runId: string) =>
+    call<{ approved: number }>(`/api/runs/${encodeURIComponent(runId)}/approve-all`, {
+      method: 'POST',
+    }),
+  regenerate: (runId: string, ticket: string) =>
+    call<{ jobId: string }>(`/api/runs/${encodeURIComponent(runId)}/regenerate`, {
+      method: 'POST',
+      ...json({ ticket }),
+    }),
 };

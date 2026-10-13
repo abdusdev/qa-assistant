@@ -220,6 +220,135 @@ describe('createRunner', () => {
     });
   });
 
+  describe('writing one ticket again', () => {
+    // A ticket with an "updated" time can be cached, so a regenerate that wrongly used the
+    // cache would be caught.
+    const cacheable = () =>
+      source(ticketsByKey(['SHP-1', 'SHP-2'], { updated: '2026-10-01T10:00:00.000+0100' }));
+
+    /** A saved run of two tickets, written by the first scripted AI. */
+    async function savedRun(repo: Repository) {
+      const first = createRunner({
+        provider: scriptedAI(),
+        tickets: cacheable(),
+        config: noCode,
+        repository: repo,
+      });
+      const outcome = await run(first, 'SHP-1 SHP-2', { mode: 'list', code: false });
+      return outcome.runId as string;
+    }
+
+    const again = (
+      repo: Repository | undefined,
+      ai: ReturnType<typeof scriptedAI>,
+      runId: string,
+      overrides: Partial<{ signal: AbortSignal }> = {},
+    ) =>
+      createRunner({
+        provider: ai,
+        tickets: cacheable(),
+        config: noCode,
+        ...(repo && { repository: repo }),
+      })({
+        input: { mode: 'ticket', value: 'SHP-1', useCodeContext: false, regenerateRunId: runId },
+        signal: overrides.signal ?? new AbortController().signal,
+        report: () => undefined,
+      });
+
+    it('swaps in new cases for that ticket and leaves the other ticket alone', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+      const before = await repo.getRun(runId);
+      const other = before?.cases.filter((c) => c.ticket === 'SHP-2').map((c) => c.title);
+      const ai = scriptedAI({
+        casesFor: () => [
+          { title: 'Brand new omega scenario', expected: 'Zeta holds again' },
+          { title: 'Another fresh sigma scenario', expected: 'Theta holds again' },
+          { title: 'A third kappa scenario', expected: 'Lambda holds again' },
+        ],
+      });
+
+      const outcome = await again(repo, ai, runId);
+
+      expect(outcome.runId).toBe(runId);
+      const after = await repo.getRun(runId);
+      const live = after?.cases.filter((c) => c.state !== 'deleted') ?? [];
+      expect(live.filter((c) => c.ticket === 'SHP-1').map((c) => c.title)).toEqual([
+        'Brand new omega scenario',
+        'Another fresh sigma scenario',
+        'A third kappa scenario',
+      ]);
+      expect(live.filter((c) => c.ticket === 'SHP-2').map((c) => c.title)).toEqual(other);
+    });
+
+    it('does not use the result cache, because the same cases again are not what was asked for', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+      const ai = scriptedAI();
+
+      await again(repo, ai, runId);
+
+      expect(ai.callsFor('SHP-1')).toBeGreaterThan(0);
+    });
+
+    it('leaves the run as it was when the ticket cannot be written', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+      const before = (await repo.getRun(runId))?.cases.map((c) => [c.id, c.state, c.title]);
+      const { AIError } = await import('../../../src/ai/errors.js');
+      const ai = scriptedAI({
+        throwFor: { 'SHP-1': new AIError('server_error', 'The AI is down') },
+      });
+
+      const error = await again(repo, ai, runId).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(RunError);
+      expect((error as Error).message).toContain('left as it was');
+      expect((await repo.getRun(runId))?.cases.map((c) => [c.id, c.state, c.title])).toEqual(
+        before,
+      );
+    });
+
+    it('leaves the run as it was when it is cancelled first', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+      const before = (await repo.getRun(runId))?.cases.map((c) => [c.id, c.state]);
+      const controller = new AbortController();
+      controller.abort();
+
+      const error = await again(repo, scriptedAI(), runId, { signal: controller.signal }).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(RunError);
+      expect((await repo.getRun(runId))?.cases.map((c) => [c.id, c.state])).toEqual(before);
+    });
+
+    it('does not create another run', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+
+      await again(repo, scriptedAI(), runId);
+
+      expect(await repo.listRuns()).toHaveLength(1);
+    });
+
+    it('needs the database, and a run that exists', async () => {
+      const repo = await freshRepo();
+      const runId = await savedRun(repo);
+
+      const noDatabase = await again(undefined, scriptedAI(), runId).catch((e: unknown) => e);
+      const noRun = await again(repo, scriptedAI(), '7b0c6f0a-3c1e-4b43-9d7e-0a2f3f2d9b11').catch(
+        (e: unknown) => e,
+      );
+
+      expect(noDatabase).toBeInstanceOf(RunError);
+      expect((noDatabase as Error).message).toContain('DATABASE_URL');
+      expect(noRun).toBeInstanceOf(RunError);
+      expect((noRun as Error).message).toContain('does not exist');
+    });
+  });
+
   describe('code context', () => {
     const withGithub = (env: Record<string, string> = {}) =>
       loadConfig({ GITHUB_TOKEN: 'gh-token', GITHUB_REPOS: REPO, ...env });

@@ -182,17 +182,22 @@ export function JobView({ id }: { id: string }) {
         </section>
       )}
 
-      {job.status === 'done' && job.runId && (
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Saved in the history as run{' '}
+      {job.runId && (job.status === 'done' || job.status === 'cancelled') && (
+        <section
+          aria-label="Next step"
+          className="rounded-lg border border-blue-300 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950"
+        >
+          <p className="text-sm text-blue-950 dark:text-blue-100">
+            The run is saved. Review it to edit cases, approve them and download Word, Markdown or
+            CSV.
+          </p>
           <a
             href={`#/runs/${job.runId}`}
-            className="font-mono text-blue-700 underline dark:text-blue-300"
+            className="mt-2 inline-block rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800"
           >
-            {job.runId.slice(0, 8)}
+            Review and edit these cases
           </a>
-          .
-        </p>
+        </section>
       )}
     </div>
   );

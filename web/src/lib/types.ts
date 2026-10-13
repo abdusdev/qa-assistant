@@ -22,6 +22,10 @@ export interface CaseSource {
 }
 
 export interface ApiCase {
+  /** Only on a saved run: the database id used to edit the case. */
+  uid?: string;
+  /** Only on a saved run: a person has read this case and accepted it. */
+  approved?: boolean;
   id: string;
   ticket: string;
   flow_step: string;
@@ -103,7 +107,19 @@ export interface ApiRunSummary {
   error: string | null;
 }
 
+export interface RunStats {
+  generated: number;
+  kept: number;
+  edited: number;
+  deleted: number;
+  added: number;
+  approved: number;
+  total: number;
+  keptShare: number;
+}
+
 export interface ApiRun extends ApiRunSummary {
+  stats?: RunStats;
   warnings: string[];
   flow: { position: number; name: string; description: string; caseCodes: string[] }[];
   cases: ApiCase[];
