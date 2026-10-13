@@ -1,12 +1,13 @@
 import type { AppConfig } from '../config/env.js';
 import { AIError } from './errors.js';
-import { FakeAIProvider } from './fake.js';
+import { DemoAIProvider } from './demo.js';
 import { FallbackProvider, type ModelSwitch } from './fallback.js';
 import { GeminiProvider } from './gemini.js';
 import type { AIProvider } from './types.js';
 
 export { AIError } from './errors.js';
 export type { AIErrorKind } from './errors.js';
+export { DemoAIProvider } from './demo.js';
 export { FakeAIProvider } from './fake.js';
 export type { FakeAIOptions, FakeReply } from './fake.js';
 export { FallbackProvider } from './fallback.js';
@@ -31,7 +32,7 @@ export function createProvider(
 ): AIProvider {
   switch (config.provider) {
     case 'fake':
-      return new FakeAIProvider({ fallback: '{}' });
+      return new DemoAIProvider();
     case 'gemini': {
       if (!config.apiKey || !config.model) {
         throw new AIError('invalid_request', 'Gemini needs AI_API_KEY and AI_MODEL to be set.');

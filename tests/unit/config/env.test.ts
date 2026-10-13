@@ -9,8 +9,28 @@ describe('loadConfig', () => {
       port: 3000,
       logLevel: 'info',
       databaseRetentionDays: 90,
+      maxConcurrentRuns: 1,
       ai: { provider: 'fake', maxOutputTokens: 8192, fallbackModels: [] },
     });
+  });
+
+  it('reads the API settings', () => {
+    const config = loadConfig({
+      API_TOKEN: 'a-long-enough-token',
+      MAX_CONCURRENT_RUNS: '3',
+      TICKET_FIXTURES_DIR: 'evals/tickets',
+    });
+
+    expect(config).toMatchObject({
+      apiToken: 'a-long-enough-token',
+      maxConcurrentRuns: 3,
+      ticketFixturesDir: 'evals/tickets',
+    });
+  });
+
+  it('rejects a token that is too short and a concurrency of zero', () => {
+    expect(() => loadConfig({ API_TOKEN: 'short' })).toThrow(/API_TOKEN/);
+    expect(() => loadConfig({ MAX_CONCURRENT_RUNS: '0' })).toThrow(/MAX_CONCURRENT_RUNS/);
   });
 
   it('reads a complete Jira connection and trims the trailing slash', () => {

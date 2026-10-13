@@ -117,6 +117,56 @@ can be drafted with `npm run digest` and is used only after a person has reviewe
   for the wrong thing, so review is still needed.
 - The plan and the coverage of each case are saved with the run (`npm run db -- migrate` adds the columns).
 
+## Web interface
+
+A small React page in `web/` that uses the API: enter a ticket, a list, a sprint or an epic, watch each ticket's
+progress, and read the cases grouped by flow step.
+
+```bash
+npm run build:web      # builds web/dist, which the server then serves at http://localhost:3000/
+npm run dev:web        # or work on it with hot reload at http://localhost:5173 (the server runs on 3000)
+```
+
+- The **"AI draft: needs QA review"** banner is always on screen.
+- A run shows its stage and every ticket's status; a ticket that failed is listed on its own so it is never hidden
+  behind the ones that worked. A run can be cancelled while it is going.
+- Cases show their steps, expected result, how well they are backed, and what to confirm. Search and a ticket filter
+  narrow them. Earlier runs are listed and can be reopened (needs `DATABASE_URL`).
+- The code-context box sends nothing when ticked (the server uses the code when it is set up for it) and an explicit
+  "no" when unticked.
+- The interface is tested in a real browser with the demo AI and fixture tickets (`npm run test:e2e`).
+- Not here yet: editing cases, approving them and exporting from the page (the rest of #12).
+
+## API
+
+`npm run dev` (or `npm start`) serves the generate API next to `GET /health`. Starting a run returns at once
+with a job id, because a sprint can take minutes; the job is then read while it runs.
+
+| Request                              | What it does                                                                                                                                                                                    |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/generate`                 | Start a run. Body: `mode` (`ticket`, `list`, `sprint`, `epic`, `release`), `value`, optional `filters` (`types`, `statuses`), `max`, `useCodeContext`, `selfReview`. Answers `202` with `jobId` |
+| `GET /api/jobs/:id`                  | Status (`queued`, `running`, `done`, `failed`, `cancelled`), progress per ticket and, when done, the cases and flow                                                                             |
+| `GET /api/jobs`                      | Recent jobs, without their results                                                                                                                                                              |
+| `POST /api/jobs/:id/cancel`          | Stop a job. A cancelled job makes no new AI calls                                                                                                                                               |
+| `GET /api/runs`, `GET /api/runs/:id` | Saved runs and their cases (needs `DATABASE_URL`)                                                                                                                                               |
+
+Errors always look like `{ "error": { "code": "invalid_request", "message": "...", "details": [{ "field": "value", "problem": "..." }] } }`.
+
+- **Access:** set `API_TOKEN` and every `/api` request must send `Authorization: Bearer <token>`. Without it the
+  API is open to anyone who can reach the server, so set it before exposing the server.
+- **Limits:** `MAX_CONCURRENT_RUNS` (default 1) runs at the same time; the rest wait in the queue. Jobs are kept in
+  memory; a finished run is also saved when a database is set.
+- **Code context:** the same rules as the command line. Without `ALLOW_CODE_TO_AI=true` a request that would use
+  code is refused with `400 not_allowed`; send `"useCodeContext": false` to leave the code out.
+- **Offline:** `AI_PROVIDER=fake` answers with small predictable cases, `TICKET_FIXTURES_DIR=evals/tickets` reads
+  tickets from files instead of Jira, and `DATABASE_URL=pglite://memory` keeps history in memory. The end-to-end
+  tests run this way, with no network.
+
+```bash
+curl -X POST localhost:3000/api/generate -H 'content-type: application/json'   -d '{"mode":"ticket","value":"SHP-4103","useCodeContext":false}'
+curl localhost:3000/api/jobs/<jobId>
+```
+
 ## Export
 
 `npm run export` writes a run as a document for people who do not read JSON:

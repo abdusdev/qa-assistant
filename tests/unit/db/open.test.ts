@@ -46,6 +46,24 @@ describe('openDatabase', () => {
     folder = path.dirname(folder);
   });
 
+  it('keeps a pglite://memory database in memory only', { timeout: 60_000 }, async () => {
+    const first = await openDatabase('pglite://memory');
+    await migrate(first);
+    const runId = await new Repository(first).createRun({
+      mode: 'ticket',
+      value: 'SHP-1',
+      promptVersion: 'v3',
+    });
+    await first.close();
+
+    const second = await openDatabase('pglite://memory');
+    await migrate(second);
+    const run = await new Repository(second).getRun(runId);
+    await second.close();
+
+    expect(run).toBeUndefined();
+  });
+
   it('asks for a folder when the pglite:// url has none', async () => {
     await expect(openDatabase('pglite://')).rejects.toThrow(/needs a folder/);
   });
