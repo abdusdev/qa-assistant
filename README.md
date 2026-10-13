@@ -112,6 +112,26 @@ can be drafted with `npm run digest` and is used only after a person has reviewe
   for the wrong thing, so review is still needed.
 - The plan and the coverage of each case are saved with the run (`npm run db -- migrate` adds the columns).
 
+## Web interface
+
+A small React page in `web/` that uses the API: enter a ticket, a list, a sprint or an epic, watch each ticket's
+progress, and read the cases grouped by flow step.
+
+```bash
+npm run build:web      # builds web/dist, which the server then serves at http://localhost:3000/
+npm run dev:web        # or work on it with hot reload at http://localhost:5173 (the server runs on 3000)
+```
+
+- The **"AI draft: needs QA review"** banner is always on screen.
+- A run shows its stage and every ticket's status; a ticket that failed is listed on its own so it is never hidden
+  behind the ones that worked. A run can be cancelled while it is going.
+- Cases show their steps, expected result, how well they are backed, and what to confirm. Search and a ticket filter
+  narrow them. Earlier runs are listed and can be reopened (needs `DATABASE_URL`).
+- The code-context box sends nothing when ticked (the server uses the code when it is set up for it) and an explicit
+  "no" when unticked.
+- The interface is tested in a real browser with the demo AI and fixture tickets (`npm run test:e2e`).
+- Not here yet: editing cases, approving them and exporting from the page (the rest of #12).
+
 ## API
 
 `npm run dev` (or `npm start`) serves the generate API next to `GET /health`. Starting a run returns at once

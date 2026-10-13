@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { createProvider } from '../ai/index.js';
 import { ConfigError, loadConfig } from '../config/env.js';
 import { migrate, openDatabase, Repository, type Db } from '../db/index.js';
@@ -63,18 +65,29 @@ async function main(): Promise<void> {
     },
   );
 
-  const app = createApp({
-    jobs,
-    ...(repository && { repository }),
-    ...(config.apiToken && { apiToken: config.apiToken }),
-    enableRelease: config.jira?.enableRelease ?? false,
-    // Real tickets and code go to the AI provider only with the setting that says so.
-    precheck: (input) => (config.ticketFixturesDir ? undefined : checkCodeContext(config, input)),
-    onError: (error) => console.error('Unexpected API error:', error),
-  });
+  const staticDir = path.resolve('web/dist');
+  const serveWeb = existsSync(path.join(staticDir, 'index.html'));
+
+  const app = createApp(
+    {
+      jobs,
+      ...(repository && { repository }),
+      ...(config.apiToken && { apiToken: config.apiToken }),
+      enableRelease: config.jira?.enableRelease ?? false,
+      // Real tickets and code go to the AI provider only with the setting that says so.
+      precheck: (input) => (config.ticketFixturesDir ? undefined : checkCodeContext(config, input)),
+      onError: (error) => console.error('Unexpected API error:', error),
+    },
+    serveWeb ? { staticDir } : {},
+  );
 
   const server = app.listen(config.port, () => {
     console.log(`qa-assistant listening on port ${config.port} (${config.env})`);
+    console.log(
+      serveWeb
+        ? `Web interface: http://localhost:${config.port}/`
+        : 'The web interface is not built. Run npm run build:web to serve it from here.',
+    );
     if (!config.apiToken)
       console.log('API_TOKEN is not set: the API is open to anyone who can reach it.');
   });
