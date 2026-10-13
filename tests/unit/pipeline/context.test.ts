@@ -59,7 +59,7 @@ describe('combineContexts', () => {
 describe('code context in a pipeline run', () => {
   const changed = [
     file('src/drawer.tsx', {
-      patch: '@@ -1 +1 @@\n-old\n+const MESSAGE = "Ship To address has changed."',
+      patch: '@@ -1 +1 @@\n-old\n+const MESSAGE = "The destination changed."',
     }),
   ];
 
@@ -93,7 +93,7 @@ describe('code context in a pipeline run', () => {
 
     const generation = ai.requests.find((r) => r.prompt.includes('<ticket key="SHP-1"'));
     expect(generation?.prompt).toContain('<code_changes>');
-    expect(generation?.prompt).toContain('+const MESSAGE = "Ship To address has changed."');
+    expect(generation?.prompt).toContain('+const MESSAGE = "The destination changed."');
     expect(generation?.system).toContain('## Code changes');
     expect(generation?.system).toContain('ShipNest connects online stores');
   });
@@ -144,7 +144,7 @@ describe('code context in a pipeline run', () => {
         {
           title: 'Warn when the address changes',
           expected: 'The seller sees the stale quote message',
-          sources: [{ from: 'code_changes', quote: 'Ship To address has changed.' }],
+          sources: [{ from: 'code_changes', quote: 'The destination changed.' }],
           assumptions: [],
         },
       ],

@@ -120,7 +120,7 @@ describe('redactSecrets', () => {
       'const passwordLabel = "Your password";',
       'placeholder="Enter password"',
       'if (!token) return',
-      'label: "Ship To address has changed. Please fetch new shipping rates."',
+      'label: "The destination changed. Fetch new quotes before booking."',
       "const author = 'Jane Smith'",
       'PORT=3000',
       'const postalCode = "90210"',
