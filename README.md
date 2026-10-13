@@ -6,7 +6,11 @@ The tool produces **draft test cases and a flow for QA to review and edit**. It 
 
 ## Status
 
-Early development. Work is tracked in GitHub issues and Jira epic SHP-4110.
+The engine works from the command line: Jira tickets in, draft test cases and a test flow out, with
+product knowledge and pull request code as context. The HTTP API, the web interface, export and the
+pilot are still to come. Work is tracked in GitHub issues (milestones M1 to M5 and Pilot) and Jira
+epic SHP-4110. See `docs/architecture.md` for how a run flows and `CONTRIBUTING.md` for how to work
+in this repository.
 
 ## Requirements
 

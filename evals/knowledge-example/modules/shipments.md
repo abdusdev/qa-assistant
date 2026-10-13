@@ -26,7 +26,7 @@ Sellers ship orders from the Orders page (several at once) or from an order's de
   reason "No rate selected".
 - An order with an invalid Ship To address is skipped, with the reason "Invalid Ship To address".
 - When the Ship To address changes, fetched rates become outdated and "Ship" stays disabled until
-  new rates are fetched. The warning is "Ship To address has changed. Please fetch new rates before
+  new rates are fetched. The warning is "The destination changed. Please fetch new rates before
   shipping this order."
 - "Reprint label" is shown only to users with the Shipments permission, and not for voided or
   delivered shipments. It keeps the tracking number and creates no new charge.

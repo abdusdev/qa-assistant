@@ -12,10 +12,10 @@ import type { Ticket } from '../../../src/jira/ticket.js';
 const ticket = (overrides: Partial<Ticket> = {}): Ticket => ({
   key: 'SHP-4103',
   url: 'https://example.atlassian.net/browse/SHP-4103',
-  summary: 'Order can be shipped after the Ship To address changes without refetching rates',
+  summary: 'A shipment can be booked after the destination changes without new quotes',
   type: 'Bug',
   status: 'Review',
-  description: 'When the address changes, the old rates remain available.',
+  description: 'When the destination changes, earlier quotes stay selectable.',
   labels: [],
   fixVersions: [],
   comments: [],
@@ -68,8 +68,8 @@ describe('buildGenerationPrompt', () => {
       const { prompt } = buildGenerationPrompt(ticket());
 
       expect(prompt).toContain('<ticket key="SHP-4103" type="Bug" status="Review">');
-      expect(prompt).toContain('Summary: Order can be shipped after');
-      expect(prompt).toContain('Description:\nWhen the address changes');
+      expect(prompt).toContain('Summary: A shipment can be booked after');
+      expect(prompt).toContain('Description:\nWhen the destination changes');
       expect(prompt).toContain('</ticket>');
       expect(prompt).toContain('"ticket": "SHP-4103"');
     });
