@@ -19,7 +19,10 @@ export default defineConfig({
     env: {
       PORT: String(port),
       NODE_ENV: 'test',
+      // Everything runs offline: a demo AI, tickets from files, and a database in memory.
       AI_PROVIDER: 'fake',
+      TICKET_FIXTURES_DIR: 'evals/tickets',
+      DATABASE_URL: 'pglite://memory',
     },
   },
 });

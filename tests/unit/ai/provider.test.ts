@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
   createProvider,
-  FakeAIProvider,
+  DemoAIProvider,
   FallbackProvider,
   GeminiProvider,
   type ModelSwitch,
 } from '../../../src/ai/index.js';
 
 describe('createProvider', () => {
-  it('returns the fake provider for AI_PROVIDER=fake', async () => {
+  it('returns the offline demo provider for AI_PROVIDER=fake', async () => {
     const provider = createProvider({
       provider: 'fake',
       maxOutputTokens: 8192,
       fallbackModels: [],
     });
 
-    expect(provider).toBeInstanceOf(FakeAIProvider);
-    expect((await provider.generate({ prompt: 'anything' })).text).toBe('{}');
+    expect(provider).toBeInstanceOf(DemoAIProvider);
+    expect(provider.name).toBe('fake');
+    expect(JSON.parse((await provider.generate({ prompt: 'anything' })).text)).toHaveProperty(
+      'steps',
+    );
   });
 
   it('returns the Gemini provider when the key and model are set', () => {

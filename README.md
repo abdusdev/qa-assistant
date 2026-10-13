@@ -112,6 +112,36 @@ can be drafted with `npm run digest` and is used only after a person has reviewe
   for the wrong thing, so review is still needed.
 - The plan and the coverage of each case are saved with the run (`npm run db -- migrate` adds the columns).
 
+## API
+
+`npm run dev` (or `npm start`) serves the generate API next to `GET /health`. Starting a run returns at once
+with a job id, because a sprint can take minutes; the job is then read while it runs.
+
+| Request                              | What it does                                                                                                                                                                                    |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/generate`                 | Start a run. Body: `mode` (`ticket`, `list`, `sprint`, `epic`, `release`), `value`, optional `filters` (`types`, `statuses`), `max`, `useCodeContext`, `selfReview`. Answers `202` with `jobId` |
+| `GET /api/jobs/:id`                  | Status (`queued`, `running`, `done`, `failed`, `cancelled`), progress per ticket and, when done, the cases and flow                                                                             |
+| `GET /api/jobs`                      | Recent jobs, without their results                                                                                                                                                              |
+| `POST /api/jobs/:id/cancel`          | Stop a job. A cancelled job makes no new AI calls                                                                                                                                               |
+| `GET /api/runs`, `GET /api/runs/:id` | Saved runs and their cases (needs `DATABASE_URL`)                                                                                                                                               |
+
+Errors always look like `{ "error": { "code": "invalid_request", "message": "...", "details": [{ "field": "value", "problem": "..." }] } }`.
+
+- **Access:** set `API_TOKEN` and every `/api` request must send `Authorization: Bearer <token>`. Without it the
+  API is open to anyone who can reach the server, so set it before exposing the server.
+- **Limits:** `MAX_CONCURRENT_RUNS` (default 1) runs at the same time; the rest wait in the queue. Jobs are kept in
+  memory; a finished run is also saved when a database is set.
+- **Code context:** the same rules as the command line. Without `ALLOW_CODE_TO_AI=true` a request that would use
+  code is refused with `400 not_allowed`; send `"useCodeContext": false` to leave the code out.
+- **Offline:** `AI_PROVIDER=fake` answers with small predictable cases, `TICKET_FIXTURES_DIR=evals/tickets` reads
+  tickets from files instead of Jira, and `DATABASE_URL=pglite://memory` keeps history in memory. The end-to-end
+  tests run this way, with no network.
+
+```bash
+curl -X POST localhost:3000/api/generate -H 'content-type: application/json'   -d '{"mode":"ticket","value":"SHP-4103","useCodeContext":false}'
+curl localhost:3000/api/jobs/<jobId>
+```
+
 ## Database
 
 Set `DATABASE_URL` in `.env` to save runs and reuse results for tickets that have not changed:

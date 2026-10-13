@@ -45,6 +45,10 @@ const envSchema = z
     CODE_CONTEXT: withDefault(z.stringbool().default(true)),
     ALLOW_CODE_TO_AI: withDefault(z.stringbool().default(false)),
 
+    API_TOKEN: optional(z.string().min(8)),
+    MAX_CONCURRENT_RUNS: withDefault(z.coerce.number().int().min(1).max(10).default(1)),
+    TICKET_FIXTURES_DIR: optional(z.string().min(1)),
+
     DATABASE_URL: optional(z.url()),
     DB_RETENTION_DAYS: withDefault(z.coerce.number().int().min(1).max(3650).default(90)),
   })
@@ -108,6 +112,12 @@ export interface AppConfig {
      */
     allowCodeToAi: boolean;
   };
+  /** Callers of the API must send this as a bearer token. Not set: the API is open (local use). */
+  apiToken?: string;
+  /** Generation runs that may be in progress at the same time. */
+  maxConcurrentRuns: number;
+  /** Read tickets from JSON files in this folder instead of Jira. For offline runs and tests. */
+  ticketFixturesDir?: string;
   databaseUrl?: string;
   /** Runs and cached results older than this many days are removed by `db purge`. */
   databaseRetentionDays: number;
@@ -132,6 +142,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
     databaseRetentionDays: env.DB_RETENTION_DAYS,
+    maxConcurrentRuns: env.MAX_CONCURRENT_RUNS,
     ai: {
       provider: env.AI_PROVIDER,
       maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
@@ -146,6 +157,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env.AI_API_KEY !== undefined) config.ai.apiKey = env.AI_API_KEY;
   if (env.AI_MODEL !== undefined) config.ai.model = env.AI_MODEL;
   if (env.DATABASE_URL !== undefined) config.databaseUrl = env.DATABASE_URL;
+  if (env.API_TOKEN !== undefined) config.apiToken = env.API_TOKEN;
+  if (env.TICKET_FIXTURES_DIR !== undefined) config.ticketFixturesDir = env.TICKET_FIXTURES_DIR;
 
   if (env.JIRA_BASE_URL && env.JIRA_EMAIL && env.JIRA_API_TOKEN) {
     config.jira = {
