@@ -24,27 +24,28 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 
 ## Scripts
 
-| Command                                                             | What it does                                                                                               |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                                                       | Start the server with auto-reload                                                                          |
-| `npm start`                                                         | Start the server                                                                                           |
-| `npm test`                                                          | Run unit tests (Vitest)                                                                                    |
-| `npm run test:coverage`                                             | Run unit tests with the 80% coverage threshold                                                             |
-| `npm run test:e2e`                                                  | Run end-to-end tests (Playwright)                                                                          |
-| `npm run lint`                                                      | Lint the code                                                                                              |
-| `npm run format`                                                    | Format the code (`format:check` only checks)                                                               |
-| `npm run typecheck`                                                 | Type-check the code                                                                                        |
-| `npm run check`                                                     | Everything CI runs: lint, format, types, unit and e2e                                                      |
-| `npm run pipeline -- file evals/tickets/example-bulk-shipment.json` | Run the whole pipeline by hand: tickets in, cases and flow out                                             |
-| `npm run knowledge -- check`                                        | Check the knowledge folder (also `match SHP-1234`, `import-cases file.csv`, `components`)                  |
-| `npm run github -- context SHP-1234`                                | Show the pull request code text that would be sent for a ticket (no AI call; also `check`, `find`)         |
-| `npm run digest -- list app_2/src/modules`                          | Draft code overviews of modules for review (also `plan`, `generate`; needs `--allow-code-to-ai`)           |
-| `npm run db -- migrate`                                             | Create or update the database tables (also `status`, `rollback`, `purge`, `runs`)                          |
-| `npm run eval`                                                      | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI) |
-| `npm run ai:check`                                                  | Make one tiny call to the AI provider set in `.env` and print the answer and token use                     |
-| `npm run jira:check`                                                | Check that the Jira settings in `.env` work (who you are, can you see the project)                         |
-| `npm run jira:resolve -- epic SHP-4110`                             | Resolve an input (ticket, list, sprint, epic, release) to tickets, with `--type`, `--status`, `--max`      |
-| `npm run jira:ticket -- SHP-1234`                                   | Print a Jira ticket as the AI will see it (needs Jira settings in `.env`)                                  |
+| Command                                                                    | What it does                                                                                                |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                                              | Start the server with auto-reload                                                                           |
+| `npm start`                                                                | Start the server                                                                                            |
+| `npm test`                                                                 | Run unit tests (Vitest)                                                                                     |
+| `npm run test:coverage`                                                    | Run unit tests with the 80% coverage threshold                                                              |
+| `npm run test:e2e`                                                         | Run end-to-end tests (Playwright)                                                                           |
+| `npm run lint`                                                             | Lint the code                                                                                               |
+| `npm run format`                                                           | Format the code (`format:check` only checks)                                                                |
+| `npm run typecheck`                                                        | Type-check the code                                                                                         |
+| `npm run check`                                                            | Everything CI runs: lint, format, types, unit and e2e                                                       |
+| `npm run pipeline -- file evals/tickets/example-bulk-shipment.json`        | Run the whole pipeline by hand: tickets in, cases and flow out                                              |
+| `npm run knowledge -- check`                                               | Check the knowledge folder (also `match SHP-1234`, `import-cases file.csv`, `components`)                   |
+| `npm run github -- context SHP-1234`                                       | Show the pull request code text that would be sent for a ticket (no AI call; also `check`, `find`)          |
+| `npm run digest -- list app_2/src/modules`                                 | Draft code overviews of modules for review (also `plan`, `generate`; needs `--allow-code-to-ai`)            |
+| `npm run export -- file out/pipeline-....json --format docx --author Tech` | Export a result (or a saved run: `export -- run <id>`) as Word, Markdown or CSV, with the "AI draft" notice |
+| `npm run db -- migrate`                                                    | Create or update the database tables (also `status`, `rollback`, `purge`, `runs`)                           |
+| `npm run eval`                                                             | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI)  |
+| `npm run ai:check`                                                         | Make one tiny call to the AI provider set in `.env` and print the answer and token use                      |
+| `npm run jira:check`                                                       | Check that the Jira settings in `.env` work (who you are, can you see the project)                          |
+| `npm run jira:resolve -- epic SHP-4110`                                    | Resolve an input (ticket, list, sprint, epic, release) to tickets, with `--type`, `--status`, `--max`       |
+| `npm run jira:ticket -- SHP-1234`                                          | Print a Jira ticket as the AI will see it (needs Jira settings in `.env`)                                   |
 
 First time running the end-to-end tests: `npx playwright install chromium`.
 
@@ -111,6 +112,20 @@ can be drafted with `npm run digest` and is used only after a person has reviewe
   sources is allowed, since boundary cases are made that way. This catches invented values, not a real value used
   for the wrong thing, so review is still needed.
 - The plan and the coverage of each case are saved with the run (`npm run db -- migrate` adds the columns).
+
+## Export
+
+`npm run export` writes a run as a document for people who do not read JSON:
+
+- **`docx`** (Word): notice, summary, what the cases cover, the flow, then every case with its steps, expected
+  result, what it is based on and what to confirm. `--author` sets the author shown in the file.
+- **`md`** (Markdown): the same content for an editor or a pull request.
+- **`csv`**: one row per case in flow order for a spreadsheet (UTF-8 with a byte order mark so Excel reads it,
+  and text that starts with `=`, `+`, `-` or `@` is neutralised so it cannot run as a formula).
+
+Every export says it is an AI draft that needs QA review. In a CSV that is a column on every row, so it cannot be
+separated from the cases. Cases QA deleted are left out, and each case shows whether it was kept, edited or
+added. Cases are grouped by flow step, in flow order.
 
 ## Database
 

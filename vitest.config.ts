@@ -22,6 +22,7 @@ export default defineConfig({
         'src/knowledge/cli.ts',
         'src/github/cli.ts',
         'src/github/digest-cli.ts',
+        'src/export/cli.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: {
