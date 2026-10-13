@@ -14,10 +14,10 @@ import type { Ticket } from '../../../src/jira/ticket.js';
 const ticket: Ticket = {
   key: 'SHP-4103',
   url: 'https://example.atlassian.net/browse/SHP-4103',
-  summary: 'Order can be shipped after the Ship To address changes',
+  summary: 'A shipment can be booked after the destination changes',
   type: 'Bug',
   status: 'Review',
-  description: 'Old rates stay available after the address changes.',
+  description: 'Earlier quotes stay selectable after the destination changes.',
   labels: [],
   fixVersions: [],
   comments: [],
@@ -286,7 +286,7 @@ describe('generateTestCases', () => {
     const detailed: Ticket = {
       ...ticket,
       description:
-        'When the seller changes the Ship To address, the old rates stay available and the order can ' +
+        'When the seller edits the destination, earlier quotes stay selectable and the order can ' +
         'still be shipped. Shipping must be blocked until new rates are fetched and one is selected. ' +
         'The seller sees a warning that asks them to fetch new rates before shipping the order.',
       acceptanceCriteria:
