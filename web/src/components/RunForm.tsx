@@ -72,10 +72,10 @@ export function RunForm() {
 
   return (
     <section aria-labelledby="new-run-title">
-      <h2 id="new-run-title" className="max-w-3xl text-4xl font-semibold tracking-tight">
+      <h2 id="new-run-title" className="max-w-3xl text-3xl font-semibold tracking-tight">
         Generate test cases
       </h2>
-      <p className="mt-3 max-w-2xl text-lg text-slate-600 dark:text-slate-400">
+      <p className="mt-2 max-w-2xl text-base text-slate-600 dark:text-slate-400">
         Enter Jira tickets. While the cases are written you can read the exact ticket text fetched
         from Jira, then review, edit and download the result.
       </p>
@@ -84,7 +84,7 @@ export function RunForm() {
         onSubmit={submit}
         noValidate
         aria-label="Run settings"
-        className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 dark:border-slate-800 dark:bg-slate-900"
+        className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
       >
         <fieldset>
           <legend className="text-base font-medium">What do you want to test?</legend>

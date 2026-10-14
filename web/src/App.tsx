@@ -34,7 +34,7 @@ export function App() {
   return (
     <>
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/85 backdrop-blur dark:border-slate-800 dark:bg-slate-950/85">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5">
           <a
             href="#/"
             className="flex items-center gap-3 rounded-lg"
@@ -69,7 +69,7 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-10 px-5 py-10">
+      <main className="mx-auto max-w-5xl space-y-8 px-5 py-8">
         {access.state === 'checking' && (
           <p role="status" className="text-base text-slate-600 dark:text-slate-400">
             Connecting...

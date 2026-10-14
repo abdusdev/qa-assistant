@@ -48,7 +48,7 @@
 
 :root {
   color-scheme: light;
-  font-size: 106.25%; /* 17px: everything sized in rem grows with it */
+  font-size: 100%; /* 16px: everything sized in rem scales with it */
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
