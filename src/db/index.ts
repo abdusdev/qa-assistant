@@ -11,6 +11,7 @@ export type {
   CaseEdit,
   CaseState,
   NewRun,
+  ReviewActivity,
   RunStats,
   RunStatus,
   RunSummary,

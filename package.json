@@ -24,6 +24,7 @@
     "github": "node --env-file-if-exists=.env --import tsx src/github/cli.ts",
     "digest": "node --env-file-if-exists=.env --import tsx src/github/digest-cli.ts",
     "export": "node --env-file-if-exists=.env --import tsx src/export/cli.ts",
+    "pilot": "node --env-file-if-exists=.env --import tsx src/pilot/cli.ts",
     "db": "node --env-file-if-exists=.env --import tsx src/db/cli.ts",
     "ai:check": "node --env-file-if-exists=.env --import tsx src/ai/check.ts",
     "jira:check": "node --env-file-if-exists=.env --import tsx src/jira/check.ts",

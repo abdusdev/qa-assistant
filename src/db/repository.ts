@@ -52,6 +52,8 @@ export interface StoredCase extends TestCase {
   runId: string;
   position: number;
   state: CaseState;
+  /** Who wrote it: the AI, or QA by hand. Kept when a case is deleted, which `state` is not. */
+  origin: 'generated' | 'added';
   /** A person has read this case and accepted it. Editing a case takes the approval back. */
   approved: boolean;
   updatedAt: Date;
@@ -69,6 +71,19 @@ export interface StoredRun extends RunSummary {
   tickets: StoredTicket[];
   flow: { position: number; name: string; description: string; caseCodes: string[] }[];
   cases: StoredCase[];
+}
+
+/** When and by whom a run was reviewed, from the change history. */
+export interface ReviewActivity {
+  /** First and last change QA made (edit, delete, restore, add, approve). Null when none. */
+  firstChangeAt: Date | null;
+  lastChangeAt: Date | null;
+  /** The names recorded on those changes (the `X-User` of each request). */
+  people: string[];
+  /** How many edits touched each field, such as title or steps. */
+  editedFields: Record<string, number>;
+  /** Cases a regeneration replaced. They are not QA's judgement of those cases, so reports leave them out. */
+  replaced: string[];
 }
 
 export interface RunStats {
@@ -195,6 +210,7 @@ const toCase = (row: CaseRow): StoredCase => ({
   covers: row.covers,
   grounding: row.grounding,
   state: stateOf(row),
+  origin: row.origin,
   approved: row.approved,
   updatedAt: row.updated_at,
 });
@@ -756,6 +772,48 @@ export class Repository {
     return {
       ...stats,
       keptShare: stats.generated === 0 ? 0 : (stats.kept + stats.edited) / stats.generated,
+    };
+  }
+
+  /** The review window, the people and the edited fields of a run, from case_revisions. */
+  async reviewActivity(runId: string): Promise<ReviewActivity> {
+    const { rows } = await this.db.query<{
+      change_type: string;
+      changed_by: string;
+      changed_at: Date;
+      before: Record<string, unknown> | null;
+      after: Record<string, unknown> | null;
+    }>(
+      `SELECT r.change_type, r.changed_by, r.changed_at, r.before, r.after
+       FROM case_revisions r JOIN test_cases c ON c.id = r.case_id
+       WHERE c.run_id = $1 AND r.change_type NOT IN ('created', 'replaced')
+       ORDER BY r.changed_at, r.id`,
+      [runId],
+    );
+
+    const people = new Set<string>();
+    const editedFields: Record<string, number> = {};
+    for (const row of rows) {
+      people.add(row.changed_by);
+      if (row.change_type !== 'edited' || !row.before || !row.after) continue;
+      for (const field of Object.keys(row.after)) {
+        if (JSON.stringify(row.before[field]) !== JSON.stringify(row.after[field])) {
+          editedFields[field] = (editedFields[field] ?? 0) + 1;
+        }
+      }
+    }
+    const replaced = await this.db.query<{ id: string }>(
+      `SELECT c.id FROM test_cases c
+       WHERE c.run_id = $1 AND c.deleted
+         AND EXISTS (SELECT 1 FROM case_revisions r WHERE r.case_id = c.id AND r.change_type = 'replaced')`,
+      [runId],
+    );
+    return {
+      firstChangeAt: rows[0]?.changed_at ?? null,
+      lastChangeAt: rows[rows.length - 1]?.changed_at ?? null,
+      people: [...people].sort(),
+      editedFields,
+      replaced: replaced.rows.map((row) => row.id),
     };
   }
 
