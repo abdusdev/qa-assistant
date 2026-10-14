@@ -105,6 +105,22 @@ the draft) and flow (case titles only). `--print-prompt` prints the exact prompt
 A ticket with no pull request is generated from its own text, with a warning. A code overview of a whole module
 can be drafted with `npm run digest` and is used only after a person has reviewed it (see `knowledge/README.md`).
 
+## AI providers
+
+`AI_PROVIDER` chooses the model service, and switching is only a setting (with `AI_API_KEY` and `AI_MODEL`):
+
+| Provider | Value    | Calls                                              |
+| -------- | -------- | -------------------------------------------------- |
+| Google   | `gemini` | Gemini `generateContent`                           |
+| OpenAI   | `openai` | Responses API at `api.openai.com/v1`               |
+| xAI      | `grok`   | Responses API at `api.x.ai/v1`                     |
+| Offline  | `fake`   | Nothing leaves the machine; predictable demo cases |
+
+The OpenAI and Grok providers ask the service not to store the request, and drop a setting the model does not
+accept (reasoning models take no custom temperature) and ask again. `AI_FALLBACK_MODELS` works for all three.
+Every provider other than `fake` sends ticket text to a third party, so the real-ticket approval flag applies
+to each of them. A free or trial plan may let the provider use that content: use a paid plan or get approval.
+
 ## Plan and checks
 
 - **Plan first, in the same call.** The model lists every behaviour it finds in the ticket and the code (`plan`,

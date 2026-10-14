@@ -34,7 +34,7 @@ const envSchema = z
     JIRA_AC_FIELD: optional(z.string().min(1)),
     JIRA_ENABLE_RELEASE: withDefault(z.stringbool().default(false)),
 
-    AI_PROVIDER: withDefault(z.enum(['gemini', 'fake']).default('fake')),
+    AI_PROVIDER: withDefault(z.enum(['gemini', 'openai', 'grok', 'fake']).default('fake')),
     AI_API_KEY: optional(z.string().min(1)),
     AI_MODEL: optional(z.string().min(1)),
     AI_FALLBACK_MODELS: optional(z.string().min(1)),
@@ -70,13 +70,13 @@ const envSchema = z
       }
     }
 
-    if (env.AI_PROVIDER === 'gemini') {
+    if (env.AI_PROVIDER !== 'fake') {
       for (const key of ['AI_API_KEY', 'AI_MODEL'] as const) {
         if (env[key] === undefined) {
           ctx.addIssue({
             code: 'custom',
             path: [key],
-            message: 'Required when AI_PROVIDER is "gemini"',
+            message: `Required when AI_PROVIDER is "${env.AI_PROVIDER}"`,
           });
         }
       }
@@ -97,7 +97,7 @@ export interface AppConfig {
     enableRelease: boolean;
   };
   ai: {
-    provider: 'gemini' | 'fake';
+    provider: 'gemini' | 'openai' | 'grok' | 'fake';
     apiKey?: string;
     model?: string;
     /** Models tried in order when the main model runs out of daily quota. */

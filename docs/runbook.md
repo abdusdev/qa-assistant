@@ -39,7 +39,7 @@ with a message that names the setting, never its value. **No secret is in the im
 | Setting                                              | Needed for                             | Notes                                                                          |
 | ---------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
 | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`      | Reading tickets                        | A read-only account is best. Without them a run fails with a clear message.    |
-| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`              | Writing cases                          | `fake` is an offline demo that gives predictable, useless cases.               |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`              | Writing cases                          | `gemini`, `openai` or `grok`. `fake` is an offline demo with useless cases.    |
 | `AI_FALLBACK_MODELS`                                 | Surviving a daily quota                | Comma-separated, tried in order.                                               |
 | `GITHUB_TOKEN`, `GITHUB_REPOS`                       | Code context                           | A read-only token for the listed repositories.                                 |
 | `ALLOW_CODE_TO_AI`                                   | Sending source code to the AI provider | Off by default. Turn on only with approval (see section 5).                    |
