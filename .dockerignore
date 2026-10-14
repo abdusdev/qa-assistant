@@ -1,0 +1,19 @@
+# Nothing here goes into the image. Secrets above all.
+.git
+.github
+.env
+.env.*
+!.env.example
+.data
+out
+node_modules
+dist
+web/dist
+coverage
+playwright-report
+test-results
+tests
+docs
+evals
+*.log
+.DS_Store

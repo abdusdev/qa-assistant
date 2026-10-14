@@ -61,3 +61,36 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Builds the image, and starts it with the demo AI to check that it really runs, as a user that is
+  # not root, and answers its health check.
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Compose file is valid
+        run: docker compose --profile app config --quiet
+
+      - name: Build the image
+        run: docker build --tag qa-assistant:ci .
+
+      - name: Start it and wait for it to be healthy
+        run: |
+          docker run --detach --name qa-assistant-ci --publish 3000:3000             --env AI_PROVIDER=fake --env DATABASE_URL=pglite://memory             --env API_TOKEN=ci-token-12345678 qa-assistant:ci
+          for i in $(seq 1 30); do
+            curl --silent --fail http://127.0.0.1:3000/health && break
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:3000/ready
+          curl --silent --head http://127.0.0.1:3000/ | grep -i "content-security-policy"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/api/jobs)" = "401"
+
+      - name: It runs as a user that is not root
+        run: test "$(docker exec qa-assistant-ci id -u)" != "0"
+
+      - name: Show the log if something failed
+        if: failure()
+        run: docker logs qa-assistant-ci

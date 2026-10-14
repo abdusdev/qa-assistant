@@ -1,15 +1,23 @@
-# Local Postgres for development:  docker compose up -d
-# Then set in .env:  DATABASE_URL=postgres://qa:qa@localhost:5432/qa_assistant
+# Postgres for development:      docker compose up -d
+#   then set in .env:            DATABASE_URL=postgres://qa:qa@localhost:5432/qa_assistant
+#
+# The whole app (page, API and database):
+#   docker compose --profile app up -d --build
+#   then open http://localhost:3000
+#
+# Settings come from .env (tokens, keys, Jira and GitHub). The database address is set here, to the
+# database in this file, whatever .env says. Set POSTGRES_PASSWORD in .env to change the database
+# password from the default "qa" (do this before anyone else can reach the machine).
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: qa
-      POSTGRES_PASSWORD: qa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qa}
       POSTGRES_DB: qa_assistant
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - qa_assistant_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +25,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  app:
+    profiles: ['app']
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: '3000'
+      NODE_ENV: production
+      DATABASE_URL: postgres://qa:${POSTGRES_PASSWORD:-qa}@postgres:5432/qa_assistant
+    ports:
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
+    volumes:
+      # The product notes can be edited on the machine without rebuilding the image.
+      - ./knowledge:/app/knowledge:ro
 
 volumes:
   qa_assistant_data:

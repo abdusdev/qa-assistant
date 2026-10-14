@@ -1,4 +1,5 @@
 import type { CasePatch, NewCaseBody } from './lib/review.js';
+import { announceAuthRequired, authHeaders } from './session.js';
 import type {
   ApiCase,
   ApiErrorBody,
@@ -28,7 +29,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(path, {
       ...init,
-      headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers },
+      headers: {
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...authHeaders(),
+        ...init?.headers,
+      },
     });
   } catch {
     throw new ApiError(0, 'network', 'The server could not be reached. Check that it is running.');
@@ -36,6 +41,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
+    // The session check is how the page finds out; announcing it would make it check again.
+    if (response.status === 401 && path !== '/api/session') announceAuthRequired();
     const error = (body as ApiErrorBody | undefined)?.error;
     throw new ApiError(
       response.status,
@@ -96,3 +103,36 @@ export const review = {
       ...json({ ticket }),
     }),
 };
+
+/** Downloads a file the server makes, sending the token, and saves it under the name it gives. */
+export async function downloadFile(path: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: authHeaders() });
+  } catch {
+    throw new ApiError(0, 'network', 'The server could not be reached. Check that it is running.');
+  }
+  if (!response.ok) {
+    if (response.status === 401) announceAuthRequired();
+    const body = (await response.json().catch(() => undefined)) as ApiErrorBody | undefined;
+    throw new ApiError(
+      response.status,
+      body?.error.code ?? 'unknown',
+      body?.error.message ?? `The server answered ${response.status}.`,
+    );
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'test-cases';
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Asks the server who is using it. A 401 means a token is needed (or was not accepted). */
+export const session = () => call<{ authRequired: boolean; user: string }>('/api/session');

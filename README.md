@@ -202,6 +202,21 @@ Every export says it is an AI draft that needs QA review. In a CSV that is a col
 separated from the cases. Cases QA deleted are left out, and each case shows whether it was kept, edited or
 added. Cases are grouped by flow step, in flow order.
 
+## Running it for the team
+
+`docker compose --profile app up -d --build` starts the page, the API and a Postgres database in containers (the
+image runs as a user that is not root and carries no secrets; settings come from `.env`). `GET /health` says it is
+alive and `GET /ready` says the database answers.
+
+- **Access:** set `API_TOKEN` and the page asks for it (with a name that is recorded on changes), or keep the server
+  on a private network.
+- **Protection:** requests to `/api` and runs started are rate limited per client, and the page is served with
+  security headers (a strict content security policy, no framing, no sniffing).
+- **Logs:** one JSON line per event, with tokens and ticket text scrubbed out.
+
+Setup from a clean machine, every setting, backups, upgrades and troubleshooting are in
+[docs/runbook.md](docs/runbook.md).
+
 ## Database
 
 The server always has a database, because history, editing and approving cases need one. With no `DATABASE_URL`
