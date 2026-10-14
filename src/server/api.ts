@@ -7,6 +7,7 @@ import { fromStoredRun, toCsv, toDocx, toMarkdown } from '../export/index.js';
 import type { JobManager } from '../jobs/manager.js';
 import { isFinished } from '../jobs/manager.js';
 import type { GenerateInput, Job } from '../jobs/types.js';
+import { rateLimit } from './rate-limit.js';
 
 export interface ApiDeps {
   jobs: JobManager;
@@ -20,6 +21,10 @@ export interface ApiDeps {
   precheck?: (input: GenerateInput) => string | undefined;
   /** Called for an unexpected error, so it can be logged. Never shown to the caller. */
   onError?: (error: unknown) => void;
+  /** Answers when what the server needs is available (the database). Used by /ready. */
+  ready?: () => Promise<unknown>;
+  /** Requests per minute for one client, and runs started per minute. Off when not set. */
+  limits?: { perMinute: number; generatePerMinute: number };
 }
 
 export type ErrorCode =
@@ -31,6 +36,7 @@ export type ErrorCode =
   | 'already_finished'
   | 'not_allowed'
   | 'database_not_configured'
+  | 'rate_limited'
   | 'internal_error';
 
 /** Every error answer has this one shape. */
@@ -47,6 +53,7 @@ const STATUS_OF: Record<ErrorCode, number> = {
   already_finished: 409,
   not_allowed: 400,
   database_not_configured: 503,
+  rate_limited: 429,
   internal_error: 500,
 };
 
@@ -121,6 +128,14 @@ function checkToken(expected: string, header: string | undefined): boolean {
  */
 export function createApiRouter(deps: ApiDeps): express.Router {
   const router = express.Router();
+  // Answers hold case text and run data, so they are never kept by a browser or a proxy.
+  router.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+  if (deps.limits) {
+    router.use(rateLimit({ windowMs: 60_000, max: deps.limits.perMinute }));
+  }
   router.use(express.json({ limit: '100kb' }));
 
   router.use((req, res, next) => {
@@ -131,6 +146,17 @@ export function createApiRouter(deps: ApiDeps): express.Router {
     }
     next();
   });
+
+  // Starting a run costs AI requests, so it has a tighter limit than reading does.
+  if (deps.limits) {
+    const startLimit = rateLimit({
+      windowMs: 60_000,
+      max: deps.limits.generatePerMinute,
+      message: 'Too many runs were started. Wait a moment before starting another.',
+    });
+    router.post('/generate', startLimit);
+    router.post('/runs/:id/regenerate', startLimit);
+  }
 
   router.post('/generate', (req, res) => {
     const parsed = generateSchema.safeParse(req.body ?? {});
@@ -230,6 +256,11 @@ export function createApiRouter(deps: ApiDeps): express.Router {
   // ---- reviewing a saved run ----------------------------------------------------------------
 
   const who = (req: express.Request) => (req.header('x-user') ?? '').trim().slice(0, 60) || 'qa';
+  // The page asks this first: it answers 401 when a token is needed and was not (or wrongly) sent.
+  router.get('/session', (req, res) => {
+    res.json({ authRequired: Boolean(deps.apiToken), user: who(req) });
+  });
+
   const needRepository = (res: express.Response): Repository | undefined => {
     if (!deps.repository) {
       fail(res, 'database_not_configured', 'Reviewing cases needs DATABASE_URL to be set.');

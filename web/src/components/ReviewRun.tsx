@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { api, ApiError, review } from '../api.js';
+import { api, ApiError, downloadFile, review } from '../api.js';
+import { getToken } from '../session.js';
 import {
   CASE_TYPES,
   EXPORT_LABEL,
@@ -545,6 +546,14 @@ export function RunView({ id }: { id: string }) {
                   href={exportUrl(run.id, format, approvedOnly)}
                   download
                   className={button}
+                  onClick={(event) => {
+                    // With no token a plain link is enough. With one, the file is fetched with it.
+                    if (getToken() === '') return;
+                    event.preventDefault();
+                    void downloadFile(exportUrl(run.id, format, approvedOnly)).catch((caught) =>
+                      setBulk({ busy: false, error: asError(caught) }),
+                    );
+                  }}
                 >
                   {EXPORT_LABEL[format]}
                 </a>

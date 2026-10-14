@@ -30,7 +30,7 @@
     "jira:resolve": "node --env-file-if-exists=.env --import tsx src/jira/resolve-cli.ts",
     "jira:ticket": "node --env-file-if-exists=.env --import tsx src/jira/cli.ts",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build:web && playwright test",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run test:e2e"
   },
   "dependencies": {
@@ -38,6 +38,7 @@
     "docx": "^9.10.0",
     "express": "^5.3.0",
     "pg": "^8.23.1",
+    "pino": "^10.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"
