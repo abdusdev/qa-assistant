@@ -46,6 +46,40 @@ describe('parseFrontMatter', () => {
     expect(data).toEqual({ name: 'A', keywords: [] });
   });
 
+  it('reads a list that Prettier wrapped over several lines, with a trailing comma', () => {
+    const { data, body } = parseFrontMatter(
+      [
+        '---',
+        'name: Webstores',
+        'keywords:',
+        '  [',
+        '    webstore,',
+        '    best buy,',
+        '  ]',
+        'labels:',
+        '  [order-sync,',
+        '   shopify]',
+        'components: [A, B]',
+        '---',
+        'body',
+      ].join('\n'),
+    );
+
+    expect(data).toEqual({
+      name: 'Webstores',
+      keywords: ['webstore', 'best buy'],
+      labels: ['order-sync', 'shopify'],
+      components: ['A', 'B'],
+    });
+    expect(body).toBe('body');
+  });
+
+  it('does not merge an empty value into the key that follows it', () => {
+    const { data } = parseFrontMatter('---\nname:\ncomponents: [A]\nlabels: [x]\n---\nbody');
+
+    expect(data).toEqual({ name: '', components: ['A'], labels: ['x'] });
+  });
+
   it('ignores lines that are not key: value', () => {
     const { data } = parseFrontMatter('---\nname: A\njust some words\n---\nbody');
 
