@@ -10,6 +10,10 @@ describe('loadConfig', () => {
       logLevel: 'info',
       databaseRetentionDays: 90,
       maxConcurrentRuns: 1,
+      rateLimitPerMinute: 300,
+      generateLimitPerMinute: 20,
+      trustProxy: false,
+      enableHsts: false,
       ai: { provider: 'fake', maxOutputTokens: 8192, fallbackModels: [] },
     });
   });
@@ -26,6 +30,29 @@ describe('loadConfig', () => {
       maxConcurrentRuns: 3,
       ticketFixturesDir: 'evals/tickets',
     });
+  });
+
+  it('reads the limits and the proxy settings', () => {
+    const config = loadConfig({
+      RATE_LIMIT_PER_MINUTE: '60',
+      GENERATE_LIMIT_PER_MINUTE: '5',
+      TRUST_PROXY: 'true',
+      ENABLE_HSTS: 'yes',
+    });
+
+    expect(config).toMatchObject({
+      rateLimitPerMinute: 60,
+      generateLimitPerMinute: 5,
+      trustProxy: true,
+      enableHsts: true,
+    });
+  });
+
+  it('rejects a limit of zero', () => {
+    expect(() => loadConfig({ RATE_LIMIT_PER_MINUTE: '0' })).toThrow(/RATE_LIMIT_PER_MINUTE/);
+    expect(() => loadConfig({ GENERATE_LIMIT_PER_MINUTE: '0' })).toThrow(
+      /GENERATE_LIMIT_PER_MINUTE/,
+    );
   });
 
   it('rejects a token that is too short and a concurrency of zero', () => {

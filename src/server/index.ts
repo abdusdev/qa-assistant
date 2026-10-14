@@ -10,6 +10,7 @@ import { JobManager } from '../jobs/manager.js';
 import { checkCodeContext, createRunner } from '../jobs/runner.js';
 import { loadKnowledge } from '../knowledge/index.js';
 import { createApp } from './app.js';
+import { createLogger } from './logger.js';
 
 /** What the server uses when DATABASE_URL is not set: a Postgres kept in a local folder. */
 const DEFAULT_DATABASE_URL = 'pglite://./.data/qa-assistant';
@@ -26,10 +27,14 @@ const missingJira: TicketSource = {
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const log = createLogger({ level: config.logLevel });
   const provider = createProvider(config.ai, {
     onSwitch: (e) =>
-      console.log(
-        `${e.from} has used its daily limit. ${e.to ? `Using ${e.to}.` : 'No model left.'}`,
+      log.warn(
+        { from: e.from, to: e.to ?? null },
+        e.to
+          ? 'a model used its daily limit, switching'
+          : 'a model used its daily limit, none left',
       ),
   });
 
@@ -39,10 +44,11 @@ async function main(): Promise<void> {
   const db: Db = await openDatabase(databaseUrl);
   await migrate(db);
   const repository = new Repository(db);
-  console.log(
+  log.info(
+    { source: config.databaseUrl ? 'DATABASE_URL' : 'local folder' },
     config.databaseUrl
-      ? 'Database: the one set in DATABASE_URL'
-      : `Database: ${databaseUrl} (set DATABASE_URL to use a Postgres server)`,
+      ? 'database ready'
+      : 'database ready in a local folder (set DATABASE_URL to use a Postgres server)',
   );
 
   const tickets: TicketSource = config.ticketFixturesDir
@@ -68,7 +74,8 @@ async function main(): Promise<void> {
     }),
     {
       maxConcurrent: config.maxConcurrentRuns,
-      onError: (error, job) => console.error(`Job ${job.id} failed unexpectedly:`, error),
+      onError: (error, job) =>
+        log.error({ err: error, jobId: job.id }, 'a run failed unexpectedly'),
     },
   );
 
@@ -83,24 +90,30 @@ async function main(): Promise<void> {
       enableRelease: config.jira?.enableRelease ?? false,
       // Real tickets and code go to the AI provider only with the setting that says so.
       precheck: (input) => (config.ticketFixturesDir ? undefined : checkCodeContext(config, input)),
-      onError: (error) => console.error('Unexpected API error:', error),
+      onError: (error) => log.error({ err: error }, 'unexpected API error'),
+      ready: () => db.query('SELECT 1'),
+      limits: {
+        perMinute: config.rateLimitPerMinute,
+        generatePerMinute: config.generateLimitPerMinute,
+      },
     },
-    serveWeb ? { staticDir } : {},
+    {
+      ...(serveWeb && { staticDir }),
+      logger: log,
+      trustProxy: config.trustProxy,
+      hsts: config.enableHsts,
+    },
   );
 
   const server = app.listen(config.port, () => {
-    console.log(`qa-assistant listening on port ${config.port} (${config.env})`);
-    console.log(
-      serveWeb
-        ? `Web interface: http://localhost:${config.port}/`
-        : 'The web interface is not built. Run npm run build:web to serve it from here.',
-    );
+    log.info({ port: config.port, env: config.env, webInterface: serveWeb }, 'listening');
+    if (!serveWeb) log.warn('the web interface is not built (npm run build:web)');
     if (!config.apiToken)
-      console.log('API_TOKEN is not set: the API is open to anyone who can reach it.');
+      log.warn('API_TOKEN is not set: the API is open to anyone who can reach it');
   });
 
   const shutdown = async () => {
-    console.log('Shutting down: stopping runs that are in progress.');
+    log.info('shutting down: stopping runs that are in progress');
     jobs.cancelAll();
     server.close();
     await jobs.whenIdle();
@@ -112,10 +125,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof ConfigError) {
-    console.error(error.message);
-    process.exit(1);
-  }
-  console.error(error);
+  // The logger may not exist yet (a bad setting stops the server before it is built).
+  if (error instanceof ConfigError) console.error(error.message);
+  else createLogger().error({ err: error }, 'the server could not start');
   process.exit(1);
 });

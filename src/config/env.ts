@@ -46,6 +46,10 @@ const envSchema = z
     ALLOW_CODE_TO_AI: withDefault(z.stringbool().default(false)),
 
     API_TOKEN: optional(z.string().min(8)),
+    RATE_LIMIT_PER_MINUTE: withDefault(z.coerce.number().int().min(1).max(100_000).default(300)),
+    GENERATE_LIMIT_PER_MINUTE: withDefault(z.coerce.number().int().min(1).max(10_000).default(20)),
+    TRUST_PROXY: withDefault(z.stringbool().default(false)),
+    ENABLE_HSTS: withDefault(z.stringbool().default(false)),
     MAX_CONCURRENT_RUNS: withDefault(z.coerce.number().int().min(1).max(10).default(1)),
     TICKET_FIXTURES_DIR: optional(z.string().min(1)),
 
@@ -116,6 +120,14 @@ export interface AppConfig {
   apiToken?: string;
   /** Generation runs that may be in progress at the same time. */
   maxConcurrentRuns: number;
+  /** Requests one client may make to /api per minute. */
+  rateLimitPerMinute: number;
+  /** Runs one client may start per minute. */
+  generateLimitPerMinute: number;
+  /** The server is behind a proxy, so the client address comes from X-Forwarded-For. */
+  trustProxy: boolean;
+  /** Send Strict-Transport-Security. Only when the server is reached over HTTPS. */
+  enableHsts: boolean;
   /** Read tickets from JSON files in this folder instead of Jira. For offline runs and tests. */
   ticketFixturesDir?: string;
   databaseUrl?: string;
@@ -143,6 +155,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: env.LOG_LEVEL,
     databaseRetentionDays: env.DB_RETENTION_DAYS,
     maxConcurrentRuns: env.MAX_CONCURRENT_RUNS,
+    rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
+    generateLimitPerMinute: env.GENERATE_LIMIT_PER_MINUTE,
+    trustProxy: env.TRUST_PROXY,
+    enableHsts: env.ENABLE_HSTS,
     ai: {
       provider: env.AI_PROVIDER,
       maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
