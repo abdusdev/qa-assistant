@@ -44,6 +44,7 @@ Settings are read from environment variables (see `.env.example`). Missing or in
 | `npm run github -- context SHP-1234`                                       | Show the pull request code text that would be sent for a ticket (no AI call; also `check`, `find`)          |
 | `npm run digest -- list app_2/src/modules`                                 | Draft code overviews of modules for review (also `plan`, `generate`; needs `--allow-code-to-ai`)            |
 | `npm run export -- file out/pipeline-....json --format docx --author Tech` | Export a result (or a saved run: `export -- run <id>`) as Word, Markdown or CSV, with the "AI draft" notice |
+| `npm run pilot -- report --since 2026-10-14 --baseline baseline.csv`       | One-page pilot report from saved runs: cases kept/edited/deleted/added, time saved, cost                    |
 | `npm run db -- migrate`                                                    | Create or update the database tables (also `status`, `rollback`, `purge`, `runs`)                           |
 | `npm run eval`                                                             | Run the real AI on the tickets in `evals/tickets` and compare with QA reference cases (by hand, not in CI)  |
 | `npm run ai:check`                                                         | Make one tiny call to the AI provider set in `.env` and print the answer and token use                      |
@@ -216,6 +217,16 @@ alive and `GET /ready` says the database answers.
 
 Setup from a clean machine, every setting, backups, upgrades and troubleshooting are in
 [docs/runbook.md](docs/runbook.md).
+
+## Pilot
+
+`npm run pilot -- report` builds the one-page report that says whether the tool saves time: from the saved runs
+and QA's review it counts cases kept, edited, deleted and added, the tool's time and cost, and which fields QA
+changed most. With a baseline file of QA's manual and review minutes it adds the time saved and a suggested
+reading (adopt, adopt with changes, not yet) using thresholds it prints. It only reads the database.
+
+How to run the pilot fairly (manual baseline first, same tickets, who times what) is in
+[docs/pilot-protocol.md](docs/pilot-protocol.md). `npm run pilot -- template` writes the baseline file.
 
 ## Database
 
