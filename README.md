@@ -120,15 +120,22 @@ can be drafted with `npm run digest` and is used only after a person has reviewe
 
 ## Web interface
 
-A small React page in `web/` that uses the API: enter a ticket, a list, a sprint or an epic, watch each ticket's
-progress, and read the cases grouped by flow step.
+A React page in `web/` that uses the API: enter a ticket, a list, a sprint or an epic, watch the run go through
+its steps, read the ticket text fetched from Jira, and read the cases grouped by flow step. It follows the system
+light or dark theme and has a switch to change it.
 
 ```bash
 npm run build:web      # builds web/dist, which the server then serves at http://localhost:3000/
 npm run dev:web        # or work on it with hot reload at http://localhost:5173 (the server runs on 3000)
 ```
 
-- The **"AI draft: needs QA review"** banner is always on screen.
+- **The ticket text is shown while the run works.** As soon as Jira has answered, each ticket is shown with its
+  full description, acceptance criteria and comments, so you can see what was fetched and what the cases come from.
+  A placeholder shows while it is still being fetched.
+- The run is shown as four steps (fetch tickets, write cases, order the flow, save the run), each marked done, in
+  progress or waiting.
+- **"AI draft: needs QA review"** sits next to the cases, on the results and on the review page. There is no bar
+  across the top of every page; every download still carries the notice.
 - A run shows its stage and every ticket's status; a ticket that failed is listed on its own so it is never hidden
   behind the ones that worked. A run can be cancelled while it is going.
 - Cases show their steps, expected result, how well they are backed, and what to confirm. Search and a ticket filter
@@ -193,11 +200,17 @@ The same actions are in the API: `PATCH /api/cases/:id`, `DELETE /api/cases/:id`
 
 `npm run export` writes a run as a document for people who do not read JSON:
 
-- **`docx`** (Word): notice, summary, what the cases cover, the flow, then every case with its steps, expected
-  result, what it is based on and what to confirm. `--author` sets the author shown in the file.
+- **`docx`** (Word): notice, **the tickets the cases were written against with their full text**, summary, what
+  the cases cover, the flow, then every case with its steps, expected result, what it is based on and what to
+  confirm. `--author` sets the author shown in the file.
 - **`md`** (Markdown): the same content for an editor or a pull request.
 - **`csv`**: one row per case in flow order for a spreadsheet (UTF-8 with a byte order mark so Excel reads it,
-  and text that starts with `=`, `+`, `-` or `@` is neutralised so it cannot run as a formula).
+  and text that starts with `=`, `+`, `-` or `@` is neutralised so it cannot run as a formula). It has a ticket
+  summary column; the full ticket text is in the Word and Markdown files.
+
+The ticket text is saved with each run (a `snapshot` on its tickets), so a download made later still shows the
+wording the cases were written from, even if the Jira ticket has changed since. Runs saved before this was kept
+name their tickets and say the text was not saved. It is removed with the run by `npm run db -- purge`.
 
 Every export says it is an AI draft that needs QA review. In a CSV that is a column on every row, so it cannot be
 separated from the cases. Cases QA deleted are left out, and each case shows whether it was kept, edited or

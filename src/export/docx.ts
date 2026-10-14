@@ -23,6 +23,7 @@ import {
   summarize,
   type ExportCase,
   type ExportRun,
+  type ExportTicket,
 } from './model.js';
 
 const INK = '1F2933';
@@ -158,7 +159,87 @@ function caseTable(c: ExportCase): Table {
   return table([1900, 7460], rows);
 }
 
-/** The run as a Word document: notice, summary, coverage, flow, then every case in flow order. */
+/** The text of a ticket field as paragraphs, one per line, so its own line breaks are kept. */
+const textLines = (value: string): Paragraph[] =>
+  value
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== '')
+    .map((line) => paragraph(line, 60));
+
+/** The tickets the cases were written against, with their full text, before any case. */
+function ticketBlocks(tickets: ExportTicket[]): (Paragraph | Table)[] {
+  if (tickets.length === 0) return [];
+  const blocks: (Paragraph | Table)[] = [
+    heading('Tickets covered', HeadingLevel.HEADING_1),
+    paragraph(
+      `The cases below were written against ${tickets.length === 1 ? 'this ticket' : 'these tickets'}, in this wording.`,
+    ),
+  ];
+  for (const { key, snapshot } of tickets) {
+    if (!snapshot) {
+      blocks.push(
+        heading(key, HeadingLevel.HEADING_2),
+        paragraph([
+          run('The ticket text was not saved with this run.', { italics: true, color: MUTED }),
+        ]),
+      );
+      continue;
+    }
+    blocks.push(
+      heading(`${key}: ${snapshot.summary}`, HeadingLevel.HEADING_2),
+      paragraph(
+        [
+          run(
+            [
+              `Type: ${snapshot.type}`,
+              `Status: ${snapshot.status}`,
+              snapshot.labels.length > 0 && `Labels: ${snapshot.labels.join(', ')}`,
+              snapshot.parentKey && `Parent: ${snapshot.parentKey}`,
+              snapshot.url,
+            ]
+              .filter(Boolean)
+              .join('  |  '),
+            { color: MUTED },
+          ),
+        ],
+        120,
+      ),
+      paragraph([run('Description', { bold: true })], 60),
+      ...textLines(snapshot.description.trim() || '(empty)'),
+    );
+    if (snapshot.acceptanceCriteria?.trim()) {
+      blocks.push(paragraph([run('Acceptance criteria', { bold: true })], 60));
+      blocks.push(...textLines(snapshot.acceptanceCriteria));
+    }
+    if (snapshot.comments.length > 0) {
+      blocks.push(paragraph([run(`Comments (${snapshot.commentCount})`, { bold: true })], 60));
+      for (const comment of snapshot.comments) {
+        blocks.push(
+          paragraph(
+            [
+              run(`${comment.author}, ${comment.created.slice(0, 10)}: `, { color: MUTED }),
+              run(comment.body.replace(/\s+/g, ' ').trim()),
+            ],
+            60,
+          ),
+        );
+      }
+    }
+    if (snapshot.truncated) {
+      blocks.push(
+        paragraph([
+          run('Some of this ticket was shortened because it was very long.', {
+            italics: true,
+            color: MUTED,
+          }),
+        ]),
+      );
+    }
+  }
+  return blocks;
+}
+
+/** The run as a Word document: notice, the tickets, summary, coverage, flow, then every case. */
 export async function toDocx(source: ExportRun): Promise<Buffer> {
   const groups = groupByFlow(source);
   const summary = summarize(source.cases);
@@ -194,6 +275,9 @@ export async function toDocx(source: ExportRun): Promise<Buffer> {
     ),
     paragraph([run(AI_DRAFT_NOTICE, { bold: true, color: WARN })], 200),
   );
+
+  // The tickets come before anything else, so the reader sees what the cases are about.
+  children.push(...ticketBlocks(source.tickets));
 
   // At a glance
   children.push(heading('At a glance', HeadingLevel.HEADING_1));

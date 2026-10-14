@@ -3,19 +3,27 @@ import { JobView } from './components/JobView.js';
 import { RunView } from './components/ReviewRun.js';
 import { RunForm } from './components/RunForm.js';
 import { SignIn } from './components/SignIn.js';
+import { ThemeToggle } from './components/ThemeToggle.js';
 import { useAccess, useRoute } from './hooks.js';
 
-/** Always on screen: every case here was written by an AI. */
-function DraftBanner() {
+/** A parcel label: a barcode on a rounded tag. Drawn here so nothing is fetched for it. */
+function Mark() {
   return (
-    <div
-      role="note"
-      data-testid="draft-banner"
-      className="sticky top-0 z-10 border-b border-amber-300 bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
-    >
-      AI draft: needs QA review. These test cases were written by an AI and must be checked and
-      edited by a person before they are relied on.
-    </div>
+    <svg viewBox="0 0 32 32" className="h-9 w-9" aria-hidden="true">
+      <rect width="32" height="32" rx="8" className="fill-blue-700 dark:fill-blue-400" />
+      <path
+        d="M8 9v14M12 9v14M15 9v14M19 9v14M23 9v14"
+        className="stroke-white dark:stroke-slate-950"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 9v14M17 9v14M21 9v14"
+        className="stroke-orange-500"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -25,16 +33,25 @@ export function App() {
 
   return (
     <>
-      <DraftBanner />
-      <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <a href="#/" className="text-lg font-semibold">
-            QA Assistant
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/85 backdrop-blur dark:border-slate-800 dark:bg-slate-950/85">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5">
+          <a
+            href="#/"
+            className="flex items-center gap-3 rounded-lg"
+            aria-label="QA Assistant, home"
+          >
+            <Mark />
+            <span className="leading-tight">
+              <span className="block text-lg font-semibold tracking-tight">QA Assistant</span>
+              <span className="block text-sm text-slate-500 dark:text-slate-400">
+                Test cases from Jira tickets
+              </span>
+            </span>
           </a>
-          <nav aria-label="Main" className="flex items-center gap-4">
+          <nav aria-label="Main" className="flex items-center gap-1">
             <a
               href="#/"
-              className="text-sm font-medium text-blue-700 hover:underline dark:text-blue-300"
+              className="rounded-lg px-3 py-2 text-base font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-slate-800"
             >
               New run
             </a>
@@ -42,18 +59,19 @@ export function App() {
               <button
                 type="button"
                 onClick={signOutNow}
-                className="text-sm font-medium text-slate-600 hover:underline dark:text-slate-400"
+                className="rounded-lg px-3 py-2 text-base font-medium text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 Sign out{access.user !== 'qa' ? ` (${access.user})` : ''}
               </button>
             )}
+            <ThemeToggle />
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-8 px-4 py-6">
+      <main className="mx-auto max-w-5xl space-y-8 px-5 py-8">
         {access.state === 'checking' && (
-          <p role="status" className="text-slate-600 dark:text-slate-400">
+          <p role="status" className="text-base text-slate-600 dark:text-slate-400">
             Connecting...
           </p>
         )}
@@ -61,16 +79,16 @@ export function App() {
         {access.state === 'unreachable' && (
           <div
             role="alert"
-            className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
+            className="rounded-xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950"
           >
-            <p className="font-semibold text-rose-900 dark:text-rose-200">
+            <p className="text-lg font-semibold text-rose-900 dark:text-rose-200">
               The server could not be reached
             </p>
-            <p className="mt-1 text-sm text-rose-900 dark:text-rose-200">{access.message}</p>
+            <p className="mt-1 text-base text-rose-900 dark:text-rose-200">{access.message}</p>
             <button
               type="button"
               onClick={retry}
-              className="mt-3 text-sm font-medium text-blue-700 underline dark:text-blue-300"
+              className="mt-3 text-base font-medium text-blue-700 underline dark:text-blue-300"
             >
               Try again
             </button>
@@ -103,9 +121,9 @@ function BackLink() {
   return (
     <a
       href="#/"
-      className="inline-block text-sm font-medium text-blue-700 hover:underline dark:text-blue-300"
+      className="-mt-4 inline-flex items-center gap-2 text-base font-medium text-blue-700 hover:underline dark:text-blue-300"
     >
-      &larr; Back to the start
+      <span aria-hidden="true">&larr;</span> Back to the start
     </a>
   );
 }

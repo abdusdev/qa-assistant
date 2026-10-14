@@ -6,6 +6,7 @@ import { createTicketCache, type Repository } from '../db/index.js';
 import { CodeContextProvider, decideCodeContext, GitHubClient } from '../github/index.js';
 import type { GitHubSource } from '../github/types.js';
 import { resolveInput, type TicketSource } from '../jira/resolver.js';
+import { toTicketSnapshot } from '../jira/snapshot.js';
 import type { Ticket } from '../jira/ticket.js';
 import { buildKnowledgeContext, type Knowledge } from '../knowledge/index.js';
 import { combineContexts } from '../pipeline/context.js';
@@ -105,6 +106,10 @@ export function createRunner(deps: RunnerDeps): JobRunner {
         ['No tickets matched the input.', ...resolved.warnings].join(' ').slice(0, 600),
       );
     }
+
+    // Shown on the page straight away, so the person can see what Jira returned.
+    const snapshots = resolved.tickets.map(toTicketSnapshot);
+    report({ type: 'ticket_details', details: snapshots });
 
     const decision = decideCodeContext(deps.config, {
       realTickets: true,
@@ -226,9 +231,11 @@ export function createRunner(deps: RunnerDeps): JobRunner {
       report({ type: 'stage', stage: 'saving' });
       const ticketKey = resolved.tickets[0]?.key ?? input.value;
       await repo.replaceTicketCases(runId, ticketKey, result.cases);
+      const fresh = snapshots.find((s) => s.key === ticketKey);
+      if (fresh) await repo.updateTicketSnapshot(runId, ticketKey, fresh);
     } else if (repo && runId) {
       report({ type: 'stage', stage: 'saving' });
-      await repo.saveResult(runId, { ...result, warnings });
+      await repo.saveResult(runId, { ...result, warnings }, snapshots);
     }
 
     return {

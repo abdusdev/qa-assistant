@@ -1,5 +1,6 @@
 import type { CaseSource, TestCase } from '../ai/schemas.js';
 import type { CaseState, StoredCase, StoredRun } from '../db/index.js';
+import type { TicketSnapshot } from '../jira/snapshot.js';
 import type { PipelineResult } from '../pipeline/run.js';
 
 /** Shown in every export, because every case was written by an AI. */
@@ -40,6 +41,15 @@ export interface ExportPlanItem {
   coveredBy: string[];
 }
 
+/**
+ * A ticket the cases were written against. The text is null for a run saved before ticket text was
+ * kept, and for a result file that does not carry it.
+ */
+export interface ExportTicket {
+  key: string;
+  snapshot: TicketSnapshot | null;
+}
+
 /** Everything an export needs, whether it comes from a saved run or from a pipeline result. */
 export interface ExportRun {
   title: string;
@@ -48,6 +58,8 @@ export interface ExportRun {
   generatedAt?: Date;
   model?: string;
   author?: string;
+  /** The tickets the cases were written against, in run order. Shown before the cases. */
+  tickets: ExportTicket[];
   steps: ExportStep[];
   cases: ExportCase[];
   warnings: string[];
@@ -76,6 +88,8 @@ export interface AdapterOptions {
   title: string;
   source?: string;
   author?: string;
+  /** Ticket text for an unsaved result, when its file carries it. */
+  snapshots?: TicketSnapshot[];
 }
 
 /** An export of a saved run, with what QA edited, added or deleted. */
@@ -100,6 +114,7 @@ export function fromStoredRun(run: StoredRun, options: AdapterOptions): ExportRu
     generatedAt: run.createdAt,
     ...(run.model && { model: run.model }),
     ...(options.author && { author: options.author }),
+    tickets: run.tickets.map((t) => ({ key: t.ticket, snapshot: t.snapshot })),
     steps: run.flow.map((step) => ({
       order: step.position + 1,
       name: step.name,
@@ -136,6 +151,10 @@ export function fromPipelineResult(
     ...(options.generatedAt && { generatedAt: options.generatedAt }),
     ...(model && { model }),
     ...(options.author && { author: options.author }),
+    tickets: result.tickets.map((t) => ({
+      key: t.ticket,
+      snapshot: options.snapshots?.find((s) => s.key === t.ticket) ?? null,
+    })),
     steps: result.flow.steps.map((step) => ({
       order: step.order,
       name: step.name,

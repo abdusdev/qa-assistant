@@ -7,6 +7,7 @@ import type {
   ApiRun,
   ApiRunSummary,
   GenerateRequest,
+  TicketDetail,
 } from './lib/types.js';
 
 /** An answer from the API that was an error, with the message it gave. */
@@ -61,6 +62,8 @@ export const api = {
       body: JSON.stringify(request),
     }),
   job: (id: string) => call<ApiJob>(`/api/jobs/${encodeURIComponent(id)}`),
+  jobTickets: (id: string) =>
+    call<{ tickets: TicketDetail[] }>(`/api/jobs/${encodeURIComponent(id)}/tickets`),
   cancel: (id: string) =>
     call<unknown>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   runs: (limit = 20) => call<{ runs: ApiRunSummary[] }>(`/api/runs?limit=${limit}`),

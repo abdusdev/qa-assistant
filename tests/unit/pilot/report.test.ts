@@ -57,6 +57,7 @@ function makeTicket(key: string, options: Partial<StoredTicket> = {}): StoredTic
     error: null,
     detail: null,
     plan: null,
+    snapshot: null,
     ...options,
   };
 }

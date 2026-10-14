@@ -26,6 +26,7 @@ import { ConfigError, loadConfig } from '../config/env.js';
 import { JiraClient } from '../jira/client.js';
 import { JiraError } from '../jira/errors.js';
 import { resolveInput, type InputMode } from '../jira/resolver.js';
+import { toTicketSnapshot } from '../jira/snapshot.js';
 import type { Ticket } from '../jira/ticket.js';
 import { buildGenerationPrompt, PROMPT_VERSION } from '../ai/prompt.js';
 import { createTicketCache, migrate, openDatabase, Repository, type Db } from '../db/index.js';
@@ -317,7 +318,7 @@ async function main(): Promise<void> {
   );
 
   if (repo && runId) {
-    await repo.saveResult(runId, result);
+    await repo.saveResult(runId, result, tickets.map(toTicketSnapshot));
     const fromCache = result.tickets.filter((t) => t.cached).length;
     console.log(
       `Saved as run ${runId}${fromCache > 0 ? ` (${fromCache} ticket(s) came from the cache)` : ''}`,
@@ -331,7 +332,14 @@ async function main(): Promise<void> {
     outDir,
     `pipeline-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
   );
-  await writeFile(outFile, JSON.stringify({ ...result, inputWarnings: warnings }, null, 2));
+  await writeFile(
+    outFile,
+    JSON.stringify(
+      { ...result, inputWarnings: warnings, ticketSnapshots: tickets.map(toTicketSnapshot) },
+      null,
+      2,
+    ),
+  );
   console.log(`Full result: ${path.relative(process.cwd(), outFile)}`);
 }
 

@@ -18,14 +18,16 @@ import {
 } from '../lib/review.js';
 import type { ApiCase, ApiJob, ApiRun } from '../lib/types.js';
 import { formatDuration, isFinished, viewOfRun } from '../lib/view.js';
+import { DraftNote } from './DraftNote.js';
 import { CaseCard } from './Results.js';
+import { TicketManifest } from './TicketManifest.js';
 
 const field =
-  'mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900';
+  'mt-1 w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-base focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-950';
 const button =
-  'rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800';
+  'rounded-lg border border-slate-300 bg-white px-4 py-2 text-base font-medium hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800';
 const primary =
-  'rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60';
+  'rounded-lg bg-blue-700 px-4 py-2 text-base font-semibold text-white hover:bg-blue-800 disabled:opacity-60 dark:bg-blue-400 dark:text-slate-950 dark:hover:bg-blue-300';
 
 const asError = (caught: unknown): ApiError =>
   caught instanceof ApiError ? caught : new ApiError(0, 'unknown', 'Something went wrong.');
@@ -35,7 +37,7 @@ function ErrorLine({ error }: { error: ApiError | undefined }) {
   return (
     <div
       role="alert"
-      className="mt-2 rounded border border-rose-300 bg-rose-50 p-2 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"
+      className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-base text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"
     >
       <p>{error.message}</p>
       {error.details.length > 0 && (
@@ -87,7 +89,7 @@ function CaseEditor(props: {
   }
 
   return (
-    <form onSubmit={submit} noValidate aria-label="Edit case" className="mt-3 space-y-3 text-sm">
+    <form onSubmit={submit} noValidate aria-label="Edit case" className="mt-4 space-y-4 text-base">
       <label className="block">
         <span className="font-medium">Title</span>
         <input
@@ -252,7 +254,7 @@ function ReviewedCase({
             }}
           />
         ) : (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
             <button
               type="button"
               disabled={busy}
@@ -373,7 +375,7 @@ function RegenerateTicket({
         <div
           role="alertdialog"
           aria-label={`Write ${ticket} again`}
-          className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-base text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
         >
           <p>
             This replaces the AI&apos;s cases for <strong>{ticket}</strong>, including any edits you
@@ -390,22 +392,22 @@ function RegenerateTicket({
         </div>
       )}
       {working && (
-        <p role="status" className="text-sm text-slate-600 dark:text-slate-400">
+        <p role="status" className="text-base text-slate-600 dark:text-slate-400">
           Writing {ticket} again...
         </p>
       )}
       {job?.status === 'done' && (
-        <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">
+        <p role="status" className="text-base text-emerald-700 dark:text-emerald-300">
           {ticket} was written again.
         </p>
       )}
       {job?.status === 'failed' && (
-        <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">
+        <p role="alert" className="text-base text-rose-700 dark:text-rose-300">
           {job.error} Nothing was changed.
         </p>
       )}
       {job?.status === 'cancelled' && (
-        <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+        <p role="status" className="text-base text-amber-700 dark:text-amber-300">
           It was cancelled. Nothing was changed.
         </p>
       )}
@@ -452,7 +454,7 @@ export function RunView({ id }: { id: string }) {
 
   if (loading) {
     return (
-      <p role="status" className="text-slate-600 dark:text-slate-400">
+      <p role="status" className="text-base text-slate-600 dark:text-slate-400">
         Loading the run...
       </p>
     );
@@ -461,12 +463,12 @@ export function RunView({ id }: { id: string }) {
     return (
       <div
         role="alert"
-        className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
+        className="rounded-xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950"
       >
-        <p className="font-semibold text-rose-900 dark:text-rose-200">
+        <p className="text-lg font-semibold text-rose-900 dark:text-rose-200">
           {error?.status === 404 ? 'There is no such run' : 'The run could not be loaded'}
         </p>
-        <p className="mt-1 text-sm text-rose-900 dark:text-rose-200">{error?.message}</p>
+        <p className="mt-1 text-base text-rose-900 dark:text-rose-200">{error?.message}</p>
       </div>
     );
   }
@@ -475,6 +477,7 @@ export function RunView({ id }: { id: string }) {
   const deleted = run.cases.filter((c) => c.state === 'deleted');
   const stats = run.stats;
   const tickets = run.tickets.map((t) => t.ticket);
+  const snapshots = run.tickets.flatMap((t) => (t.snapshot ? [t.snapshot] : []));
 
   async function approveAll() {
     setBulk({ busy: true });
@@ -488,12 +491,15 @@ export function RunView({ id }: { id: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-lg font-semibold">
-          {run.inputMode} {run.inputValue}
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+    <div className="space-y-10">
+      <section>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h2 className="break-words text-3xl font-semibold tracking-tight">
+            {run.inputMode} {run.inputValue}
+          </h2>
+          <DraftNote />
+        </div>
+        <p className="mt-2 text-base text-slate-600 dark:text-slate-400">
           {new Date(run.createdAt).toLocaleString(undefined, {
             dateStyle: 'medium',
             timeStyle: 'short',
@@ -503,7 +509,7 @@ export function RunView({ id }: { id: string }) {
           {run.durationMs !== null && ` · ${formatDuration(run.durationMs)}`}
         </p>
         {run.error && (
-          <p role="alert" className="mt-2 text-sm text-rose-700 dark:text-rose-300">
+          <p role="alert" className="mt-2 text-base text-rose-700 dark:text-rose-300">
             {run.error}
           </p>
         )}
@@ -512,15 +518,21 @@ export function RunView({ id }: { id: string }) {
       {stats && (
         <section
           aria-label="Review"
-          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="font-semibold">Review</h3>
-              <p data-testid="review-summary" className="mt-1 text-sm">
+              <h3 className="text-xl font-semibold tracking-tight">Review</h3>
+              <p
+                data-testid="review-summary"
+                className="mt-2 text-3xl font-semibold tracking-tight"
+              >
                 {stats.approved} of {stats.total} approved
               </p>
-              <p data-testid="review-counts" className="text-sm text-slate-600 dark:text-slate-400">
+              <p
+                data-testid="review-counts"
+                className="mt-1 text-base text-slate-600 dark:text-slate-400"
+              >
                 {reviewText(stats)} · {keptShareText(stats)} of the AI&apos;s cases survived
               </p>
             </div>
@@ -537,8 +549,8 @@ export function RunView({ id }: { id: string }) {
           </div>
           <ErrorLine error={bulk.error} />
 
-          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
-            <p className="text-sm font-medium">Download</p>
+          <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
+            <p className="text-base font-medium">Download</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {(['docx', 'md', 'csv'] as ExportFormat[]).map((format) => (
                 <a
@@ -558,7 +570,7 @@ export function RunView({ id }: { id: string }) {
                   {EXPORT_LABEL[format]}
                 </a>
               ))}
-              <label className="ml-2 flex items-center gap-2 text-sm">
+              <label className="ml-2 flex items-center gap-2 text-base">
                 <input
                   type="checkbox"
                   checked={approvedOnly}
@@ -567,8 +579,9 @@ export function RunView({ id }: { id: string }) {
                 Approved cases only
               </label>
             </div>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Every file says it is an AI draft that needs QA review.
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              Every file starts with the tickets it was written for and says it is an AI draft that
+              needs QA review.
             </p>
           </div>
         </section>
@@ -577,13 +590,13 @@ export function RunView({ id }: { id: string }) {
       {view.problems.length > 0 && (
         <section
           role="alert"
-          className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
+          className="rounded-xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950"
         >
-          <h3 className="font-semibold text-rose-900 dark:text-rose-200">
+          <h3 className="text-lg font-semibold text-rose-900 dark:text-rose-200">
             {view.problems.length} ticket{view.problems.length === 1 ? '' : 's'} did not produce
             cases
           </h3>
-          <ul className="mt-2 space-y-1 text-sm text-rose-900 dark:text-rose-200">
+          <ul className="mt-2 space-y-1 text-base text-rose-900 dark:text-rose-200">
             {view.problems.map((problem) => (
               <li key={problem.ticket}>
                 <span className="font-mono font-medium">{problem.ticket}</span>: {problem.message}
@@ -594,9 +607,9 @@ export function RunView({ id }: { id: string }) {
       )}
 
       {view.warnings.length > 0 && (
-        <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
-          <h3 className="font-semibold text-amber-900 dark:text-amber-200">Notes</h3>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900 dark:text-amber-200">
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950">
+          <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-200">Notes</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-amber-900 dark:text-amber-200">
             {view.warnings.map((warning, i) => (
               <li key={i}>{warning}</li>
             ))}
@@ -604,14 +617,22 @@ export function RunView({ id }: { id: string }) {
         </section>
       )}
 
-      <section aria-label="Tickets" className="space-y-2">
-        <h3 className="font-semibold">Tickets in this run</h3>
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+      {snapshots.length > 0 && (
+        <TicketManifest
+          tickets={snapshots}
+          heading="Tickets these cases were written for"
+          note="The text of each ticket as it was when the cases were written. Every download starts with it."
+        />
+      )}
+
+      <section aria-label="Tickets" className="space-y-3">
+        <h3 className="text-xl font-semibold tracking-tight">Tickets in this run</h3>
+        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
           {tickets.map((ticket) => (
-            <li key={ticket} className="px-4 py-2">
+            <li key={ticket} className="px-5 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-mono text-sm font-medium">{ticket}</span>
-                <span className="text-sm text-slate-600 dark:text-slate-400">
+                <span className="font-mono text-base font-medium">{ticket}</span>
+                <span className="text-base text-slate-600 dark:text-slate-400">
                   {view.cases.filter((c) => c.ticket === ticket && c.state !== 'deleted').length}{' '}
                   cases
                 </span>
@@ -623,22 +644,29 @@ export function RunView({ id }: { id: string }) {
       </section>
 
       {view.groups.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-600 dark:border-slate-700 dark:text-slate-400">
+        <p className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-base text-slate-600 dark:border-slate-700 dark:text-slate-400">
           There are no cases in this run.
         </p>
       ) : (
         view.groups.map((group) => (
           <details key={group.name} open>
-            <summary className="cursor-pointer select-none text-lg font-semibold">
-              {group.order}. {group.name}
-              <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+            <summary className="flex cursor-pointer select-none items-baseline gap-2 text-xl font-semibold tracking-tight">
+              <span aria-hidden="true" className="text-base text-slate-400">
+                &#9656;
+              </span>
+              <span>
+                {group.order}. {group.name}
+              </span>
+              <span className="ml-2 text-base font-normal text-slate-500 dark:text-slate-400">
                 {group.cases.length} case{group.cases.length === 1 ? '' : 's'}
               </span>
             </summary>
             {group.description && (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{group.description}</p>
+              <p className="mt-1 text-base text-slate-600 dark:text-slate-400">
+                {group.description}
+              </p>
             )}
-            <div className="mt-3 space-y-3">
+            <div className="mt-4 space-y-4">
               {group.cases.map((c, index) => (
                 <ReviewedCase
                   key={c.uid ?? `${c.ticket}-${c.id}`}
@@ -670,10 +698,10 @@ export function RunView({ id }: { id: string }) {
 
       {deleted.length > 0 && (
         <details>
-          <summary className="cursor-pointer select-none font-semibold">
+          <summary className="cursor-pointer select-none text-lg font-semibold">
             Deleted cases ({deleted.length})
           </summary>
-          <ul className="mt-2 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+          <ul className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
             {deleted.map((c) => (
               <DeletedRow key={c.uid} testCase={c} ctx={ctx} />
             ))}
@@ -697,9 +725,9 @@ function NewCase({
 }) {
   const [ticket, setTicket] = useState(tickets[0] ?? '');
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <h3 className="font-semibold">Add a case</h3>
-      <label className="mt-3 block text-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <h3 className="text-xl font-semibold tracking-tight">Add a case</h3>
+      <label className="mt-4 block text-base">
         <span className="font-medium">Ticket</span>
         <select value={ticket} onChange={(e) => setTicket(e.target.value)} className={field}>
           {tickets.map((key) => (
@@ -728,7 +756,7 @@ function DeletedRow({ testCase, ctx }: { testCase: ApiCase; ctx: ReviewApi }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | undefined>();
   return (
-    <li className="px-4 py-2 text-sm">
+    <li className="px-5 py-3 text-base">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>
           <span className="mr-2 font-mono text-slate-500 dark:text-slate-400">{testCase.id}</span>

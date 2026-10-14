@@ -43,6 +43,7 @@ const sampleRun = (): ExportRun => ({
   generatedAt: new Date('2026-10-12T10:00:00Z'),
   model: 'gemini-test',
   author: 'Tech',
+  tickets: [],
   steps: [
     { order: 2, name: 'Failures', description: 'What goes wrong', caseIds: ['TC-3', 'TC-2'] },
     { order: 1, name: 'Happy path', description: 'The normal journey', caseIds: ['TC-1'] },
@@ -199,6 +200,7 @@ describe('toMarkdown', () => {
 describe('toCsv', () => {
   const csv = toCsv(sampleRun());
   const rows = parseCsv(csv);
+  const col = (row: string[], name: (typeof CSV_COLUMNS)[number]) => row[CSV_COLUMNS.indexOf(name)];
 
   it('starts with a byte order mark so Excel reads the text correctly', () => {
     expect(csv.charCodeAt(0)).toBe(0xfeff);
@@ -207,7 +209,11 @@ describe('toCsv', () => {
   it('has the header and one row per case that was not deleted, in flow order', () => {
     expect(rows[0]).toEqual([...CSV_COLUMNS]);
     expect(rows.slice(1).map((r) => r[1])).toEqual(['TC-1', 'TC-2', 'TC-4']);
-    expect(rows.slice(1).map((r) => r[3])).toEqual(['Happy path', 'Failures', 'Other']);
+    expect(rows.slice(1).map((r) => col(r, 'Flow step'))).toEqual([
+      'Happy path',
+      'Failures',
+      'Other',
+    ]);
   });
 
   it('puts the AI draft notice on every row it applies to', () => {
@@ -219,9 +225,9 @@ describe('toCsv', () => {
   it('keeps commas, quotes and line breaks inside their cell', () => {
     const second = rows[2] as string[];
 
-    expect(second[4]).toBe('Shipping is blocked, "stale" rates | pipe');
-    expect(second[8]).toBe('1. Open the order\n2. Change the destination\n3. Save');
-    expect(second[11]).toBe('The button is called "Ship"');
+    expect(col(second, 'Title')).toBe('Shipping is blocked, "stale" rates | pipe');
+    expect(col(second, 'Steps')).toBe('1. Open the order\n2. Change the destination\n3. Save');
+    expect(col(second, 'To confirm')).toBe('The button is called "Ship"');
   });
 
   it('uses Windows line endings between rows', () => {
@@ -240,7 +246,7 @@ describe('toCsv', () => {
     run.cases = [exportCase({ title: '=HYPERLINK("http://example.com","click")', id: 'TC-9' })];
     run.steps = [{ order: 1, name: 'Happy path', description: '', caseIds: ['TC-9'] }];
 
-    const title = (parseCsv(toCsv(run))[1] as string[])[4] as string;
+    const title = col(parseCsv(toCsv(run))[1] as string[], 'Title') as string;
 
     expect(title.startsWith("'=")).toBe(true);
   });
