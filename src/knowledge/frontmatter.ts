@@ -11,6 +11,27 @@ const stripQuotes = (value: string) =>
     .replace(/^['"]|['"]$/g, '')
     .trim();
 
+const countOf = (text: string, char: string) => text.split(char).length - 1;
+
+/**
+ * Puts each header entry on one line. Prettier wraps a long list over several lines, and may put
+ * its "[" on the line after "key:", so both shapes are joined back together.
+ */
+function joinWrappedLists(lines: string[]): string[] {
+  const joined: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    let current = (lines[i] ?? '').trim();
+    if (/^[A-Za-z_][\w -]*:$/.test(current) && (lines[i + 1] ?? '').trim().startsWith('[')) {
+      current += ' ' + (lines[++i] ?? '').trim();
+    }
+    while (countOf(current, '[') > countOf(current, ']') && i + 1 < lines.length) {
+      current += ' ' + (lines[++i] ?? '').trim();
+    }
+    joined.push(current);
+  }
+  return joined;
+}
+
 /**
  * Reads a small header at the top of a Markdown file:
  *
@@ -19,7 +40,8 @@ const stripQuotes = (value: string) =>
  *   components: [Shipments, Shipping]
  *   ---
  *
- * Only "key: value" and "key: [a, b, c]" are understood, which is all the notes need.
+ * Only "key: value" and "key: [a, b, c]" are understood, which is all the notes need. A list
+ * may continue over several lines, because Prettier wraps long ones.
  * A file without a header is returned whole as the body.
  */
 export function parseFrontMatter(text: string): FrontMatter {
@@ -31,7 +53,7 @@ export function parseFrontMatter(text: string): FrontMatter {
   if (end === -1) return { data: {}, body: normalized.trim() };
 
   const data: Record<string, FrontMatterValue> = {};
-  for (const line of lines.slice(1, end)) {
+  for (const line of joinWrappedLists(lines.slice(1, end))) {
     const match = /^([A-Za-z_][\w -]*):\s*(.*)$/.exec(line.trim());
     if (!match?.[1]) continue;
 
