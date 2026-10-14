@@ -21,6 +21,7 @@ export const CSV_COLUMNS = [
   'Review status',
   'ID',
   'Ticket',
+  'Ticket summary',
   'Flow step',
   'Title',
   'Type',
@@ -40,6 +41,7 @@ export const CSV_COLUMNS = [
  */
 export function toCsv(run: ExportRun): string {
   const rows: string[][] = [[...CSV_COLUMNS]];
+  const summaryOf = new Map(run.tickets.map((t) => [t.key, t.snapshot?.summary ?? '']));
 
   for (const { step, cases } of groupByFlow(run)) {
     for (const c of cases) {
@@ -50,6 +52,7 @@ export function toCsv(run: ExportRun): string {
         REVIEW_STATUS[c.state],
         c.id,
         c.ticket,
+        summaryOf.get(c.ticket) ?? '',
         step.name,
         c.title,
         c.type,

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Flow, TestCase } from '../ai/schemas.js';
 import { CASE_TYPES, PRIORITIES } from '../ai/schemas.js';
+import type { TicketSnapshot } from '../jira/snapshot.js';
 import type { PipelineResult } from '../pipeline/run.js';
 import type { Db } from './types.js';
 
@@ -43,6 +44,8 @@ export interface StoredTicket {
   detail: { sufficient: boolean; missing: string[] } | null;
   /** The behaviours the model planned for this ticket, and the ones no case covers. */
   plan: { items: { id: string; behaviour: string }[]; uncovered: string[] } | null;
+  /** The ticket text the cases were written against. Null for runs saved before it was kept. */
+  snapshot: TicketSnapshot | null;
 }
 
 /** A case as stored: the AI's fields plus what QA did with it. */
@@ -259,7 +262,12 @@ export class Repository {
   }
 
   /** Stores a finished run: its tickets, cases, flow, warnings and totals, all or nothing. */
-  async saveResult(runId: string, result: PipelineResult): Promise<void> {
+  async saveResult(
+    runId: string,
+    result: PipelineResult,
+    snapshots: TicketSnapshot[] = [],
+  ): Promise<void> {
+    const snapshotOf = new Map(snapshots.map((s) => [s.key, s]));
     await this.db.transaction(async (tx) => {
       const model = result.tickets.find((t) => t.model)?.model ?? null;
 
@@ -288,8 +296,8 @@ export class Repository {
       for (const [position, ticket] of result.tickets.entries()) {
         await tx.query(
           `INSERT INTO run_tickets (run_id, ticket_key, position, status, cases, attempts, reviewed,
-             cached, model, review_note, error, detail, plan)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb)`,
+             cached, model, review_note, error, detail, plan, snapshot)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb)`,
           [
             runId,
             ticket.ticket,
@@ -304,6 +312,7 @@ export class Repository {
             ticket.error ?? null,
             ticket.detail ? json(ticket.detail) : null,
             ticket.plan ? json(ticket.plan) : null,
+            snapshotOf.has(ticket.ticket) ? json(snapshotOf.get(ticket.ticket)) : null,
           ],
         );
       }
@@ -319,6 +328,18 @@ export class Repository {
         await this.insertCase(tx, runId, testCase, position, 'generated');
       }
     });
+  }
+
+  /** Replaces the kept ticket text of one ticket, for example after it was written again. */
+  async updateTicketSnapshot(
+    runId: string,
+    ticketKey: string,
+    snapshot: TicketSnapshot,
+  ): Promise<void> {
+    await this.db.query(
+      'UPDATE run_tickets SET snapshot = $3::jsonb WHERE run_id = $1 AND ticket_key = $2',
+      [runId, ticketKey, json(snapshot)],
+    );
   }
 
   async failRun(runId: string, message: string): Promise<void> {
@@ -355,6 +376,7 @@ export class Repository {
       error: string | null;
       detail: StoredTicket['detail'];
       plan: StoredTicket['plan'];
+      snapshot: TicketSnapshot | null;
     }>('SELECT * FROM run_tickets WHERE run_id = $1 ORDER BY position', [runId]);
 
     const steps = await this.db.query<{ position: number; name: string; description: string }>(
@@ -390,6 +412,7 @@ export class Repository {
         error: t.error,
         detail: t.detail,
         plan: t.plan,
+        snapshot: t.snapshot ?? null,
       })),
       flow: steps.rows.map((step) => ({
         ...step,

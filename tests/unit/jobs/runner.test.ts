@@ -113,6 +113,116 @@ describe('createRunner', () => {
     expect(statuses).toEqual(['SHP-1:running', 'SHP-1:ok', 'SHP-2:running', 'SHP-2:ok']);
   });
 
+  it('reports the full text of every ticket as soon as it is fetched, before any AI call', async () => {
+    const updates: ProgressUpdate[] = [];
+    const calls: string[] = [];
+    const ai = scriptedAI();
+    const runner = createRunner({
+      provider: {
+        name: ai.name,
+        generate: (request) => {
+          calls.push('ai');
+          return ai.generate(request);
+        },
+      },
+      tickets: source(
+        ticketsByKey(['SHP-1', 'SHP-2'], {
+          description: 'The full description with the rule that matters.',
+          acceptanceCriteria: 'It works',
+        }),
+      ),
+      config: noCode,
+    });
+
+    await run(runner, 'SHP-1 SHP-2', {
+      mode: 'list',
+      code: false,
+      report: (update) => {
+        updates.push(update);
+        if (update.type === 'ticket_details') calls.push('details');
+      },
+    });
+
+    const details = updates.find((u) => u.type === 'ticket_details');
+    expect(details).toMatchObject({
+      type: 'ticket_details',
+      details: [
+        {
+          key: 'SHP-1',
+          description: 'The full description with the rule that matters.',
+          acceptanceCriteria: 'It works',
+        },
+        { key: 'SHP-2' },
+      ],
+    });
+    expect(calls[0]).toBe('details');
+  });
+
+  it('still reports the tickets when the run then cannot start', async () => {
+    const updates: ProgressUpdate[] = [];
+    const runner = createRunner({
+      provider: scriptedAI(),
+      tickets: source(ticketsByKey(['SHP-1'])),
+      // Code context asked for, but no GitHub settings: the run stops with a clear reason.
+      config: noCode,
+    });
+
+    await expect(
+      run(runner, 'SHP-1', { code: true, report: (update) => updates.push(update) }),
+    ).rejects.toBeInstanceOf(RunError);
+
+    expect(updates.some((u) => u.type === 'ticket_details')).toBe(true);
+  });
+
+  it('keeps the ticket text with the saved run', async () => {
+    const repo = await freshRepo();
+    const runner = createRunner({
+      provider: scriptedAI(),
+      tickets: source(ticketsByKey(['SHP-1'], { description: 'Saved with the run.' })),
+      config: noCode,
+      repository: repo,
+    });
+
+    const outcome = await run(runner, 'SHP-1', { code: false });
+
+    const stored = await repo.getRun(outcome.runId!);
+    expect(stored?.tickets[0]?.snapshot).toMatchObject({
+      key: 'SHP-1',
+      description: 'Saved with the run.',
+    });
+  });
+
+  it('refreshes the kept ticket text when one ticket is written again', async () => {
+    const repo = await freshRepo();
+    const first = createRunner({
+      provider: scriptedAI(),
+      tickets: source(ticketsByKey(['SHP-1'], { description: 'Old wording.' })),
+      config: noCode,
+      repository: repo,
+    });
+    const outcome = await run(first, 'SHP-1', { code: false });
+
+    const again = createRunner({
+      provider: scriptedAI(),
+      tickets: source(ticketsByKey(['SHP-1'], { description: 'New wording after an edit.' })),
+      config: noCode,
+      repository: repo,
+    });
+    await again({
+      input: {
+        mode: 'ticket',
+        value: 'SHP-1',
+        regenerateRunId: outcome.runId!,
+        useCodeContext: false,
+      },
+      signal: new AbortController().signal,
+      report: () => undefined,
+    });
+
+    const stored = await repo.getRun(outcome.runId!);
+    expect(stored?.tickets[0]?.snapshot?.description).toBe('New wording after an edit.');
+  });
+
   it('saves the run and the cases when a database is set up', async () => {
     const repo = await freshRepo();
     const runner = createRunner({

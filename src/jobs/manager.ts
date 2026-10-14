@@ -166,6 +166,9 @@ export class JobManager {
       case 'stage':
         job.progress.stage = update.stage;
         break;
+      case 'ticket_details':
+        job.ticketDetails = update.details;
+        break;
       case 'tickets':
         job.progress.tickets = update.tickets.map((ticket) => ({ ticket, status: 'pending' }));
         job.progress.total = update.tickets.length;

@@ -7,6 +7,7 @@ import {
   summarize,
   type ExportCase,
   type ExportRun,
+  type ExportTicket,
 } from './model.js';
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -41,7 +42,60 @@ function caseBlock(c: ExportCase): string[] {
   return lines;
 }
 
-/** The run as a Markdown document: notice, summary, then the cases grouped by flow step. */
+const quote = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((line) => (line.trim() === '' ? '>' : `> ${line}`))
+    .join('\n');
+
+/** The tickets the cases were written against, with their full text, before any case. */
+function ticketSection(tickets: ExportTicket[]): string[] {
+  if (tickets.length === 0) return [];
+  const lines: string[] = [
+    '## Tickets covered',
+    '',
+    `The cases below were written against ${tickets.length === 1 ? 'this ticket' : 'these tickets'}, in this wording.`,
+    '',
+  ];
+  for (const { key, snapshot } of tickets) {
+    if (!snapshot) {
+      lines.push(`### ${key}`, '', '_The ticket text was not saved with this run._', '');
+      continue;
+    }
+    lines.push(`### ${key}: ${oneLine(snapshot.summary)}`, '');
+    lines.push(
+      [
+        `Type: ${snapshot.type}`,
+        `Status: ${snapshot.status}`,
+        snapshot.labels.length > 0 && `Labels: ${snapshot.labels.join(', ')}`,
+        snapshot.parentKey && `Parent: ${snapshot.parentKey}`,
+        snapshot.url,
+      ]
+        .filter(Boolean)
+        .join(' | '),
+      '',
+    );
+    lines.push('**Description**', '', quote(snapshot.description.trim() || '(empty)'), '');
+    if (snapshot.acceptanceCriteria?.trim()) {
+      lines.push('**Acceptance criteria**', '', quote(snapshot.acceptanceCriteria), '');
+    }
+    if (snapshot.comments.length > 0) {
+      lines.push(`**Comments (${snapshot.commentCount})**`, '');
+      for (const comment of snapshot.comments) {
+        lines.push(
+          quote(`${comment.author}, ${comment.created.slice(0, 10)}: ${comment.body}`),
+          '',
+        );
+      }
+    }
+    if (snapshot.truncated) {
+      lines.push('_Some of this ticket was shortened because it was very long._', '');
+    }
+  }
+  return lines;
+}
+
+/** The run as a Markdown document: notice, the tickets, summary, then the cases by flow step. */
 export function toMarkdown(run: ExportRun): string {
   const groups = groupByFlow(run);
   const summary = summarize(run.cases);
@@ -54,6 +108,8 @@ export function toMarkdown(run: ExportRun): string {
     run.author && `Author: ${run.author}`,
   ].filter((part): part is string => Boolean(part));
   lines.push(facts.join(' | '), '');
+
+  lines.push(...ticketSection(run.tickets));
 
   lines.push('## Summary', '');
   lines.push(`- Cases: ${summary.total}`);

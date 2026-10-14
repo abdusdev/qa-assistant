@@ -122,6 +122,7 @@ function checkToken(expected: string, header: string | undefined): boolean {
  *   POST /api/generate          start a run
  *   GET  /api/jobs              recent jobs
  *   GET  /api/jobs/:id          one job: status, progress and, when done, the results
+ *   GET  /api/jobs/:id/tickets  the tickets as fetched from Jira, for showing on the page
  *   POST /api/jobs/:id/cancel   stop a job
  *   GET  /api/runs              saved runs (needs the database)
  *   GET  /api/runs/:id          one saved run with its cases and flow
@@ -195,7 +196,22 @@ export function createApiRouter(deps: ApiDeps): express.Router {
       fail(res, 'not_found', 'There is no job with that id. Jobs are kept in memory only.');
       return;
     }
-    res.json(job);
+    // The ticket text has its own route, so it is not sent again with every progress read.
+    // (An undefined field is left out of the JSON.)
+    res.json({
+      ...job,
+      ticketDetails: undefined,
+      hasTicketDetails: job.ticketDetails !== undefined,
+    });
+  });
+
+  router.get('/jobs/:id/tickets', (req, res) => {
+    const job = deps.jobs.get(String(req.params.id));
+    if (!job) {
+      fail(res, 'not_found', 'There is no job with that id. Jobs are kept in memory only.');
+      return;
+    }
+    res.json({ tickets: job.ticketDetails ?? [] });
   });
 
   router.post('/jobs/:id/cancel', (req, res) => {

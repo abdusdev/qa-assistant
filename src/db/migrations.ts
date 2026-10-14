@@ -151,4 +151,14 @@ export const migrations: Migration[] = [
       ALTER TABLE test_cases DROP COLUMN approved;
     `,
   },
+  {
+    version: 4,
+    name: 'ticket_snapshot',
+    up: `
+      ALTER TABLE run_tickets ADD COLUMN snapshot jsonb;
+    `,
+    down: `
+      ALTER TABLE run_tickets DROP COLUMN snapshot;
+    `,
+  },
 ];

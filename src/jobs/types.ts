@@ -1,6 +1,7 @@
 import type { Flow, TestCase } from '../ai/schemas.js';
 import type { AIUsage } from '../ai/types.js';
 import type { InputMode } from '../jira/resolver.js';
+import type { TicketSnapshot } from '../jira/snapshot.js';
 import type { TicketOutcome } from '../pipeline/run.js';
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -33,6 +34,9 @@ export interface JobTicketProgress {
   error?: string;
 }
 
+/** One ticket as fetched, for showing on the page while the run works. */
+export type JobTicketDetail = TicketSnapshot;
+
 export interface JobProgress {
   stage: JobStage;
   total: number;
@@ -64,6 +68,8 @@ export interface Job {
   /** True once a cancel was asked for, until the run has actually stopped. */
   cancelRequested: boolean;
   progress: JobProgress;
+  /** The tickets as fetched. Served by its own route, not with every progress read. */
+  ticketDetails?: JobTicketDetail[];
   /** Set when the run was saved to the database. */
   runId?: string;
   result?: JobResult;
@@ -75,6 +81,7 @@ export interface Job {
 export type ProgressUpdate =
   | { type: 'stage'; stage: JobStage }
   | { type: 'tickets'; tickets: string[] }
+  | { type: 'ticket_details'; details: JobTicketDetail[] }
   | {
       type: 'ticket';
       ticket: string;

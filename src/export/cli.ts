@@ -11,6 +11,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { ConfigError, loadConfig } from '../config/env.js';
 import { migrate, openDatabase, Repository } from '../db/index.js';
+import type { TicketSnapshot } from '../jira/snapshot.js';
 import type { PipelineResult } from '../pipeline/run.js';
 import {
   EXPORT_FORMATS,
@@ -62,10 +63,13 @@ async function main(): Promise<void> {
   let run: ExportRun;
 
   if (kind === 'file') {
-    const result = JSON.parse(await readFile(target, 'utf8')) as PipelineResult;
+    const result = JSON.parse(await readFile(target, 'utf8')) as PipelineResult & {
+      ticketSnapshots?: TicketSnapshot[];
+    };
     run = fromPipelineResult(result, {
       title: flags.get('title') ?? 'Test cases',
       source: target,
+      ...(result.ticketSnapshots && { snapshots: result.ticketSnapshots }),
       ...(author && { author }),
     });
   } else {
