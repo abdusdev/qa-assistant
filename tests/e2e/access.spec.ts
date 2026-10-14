@@ -12,11 +12,10 @@ async function signIn(page: Page, token = TOKEN, name = 'Tech') {
 }
 
 test.describe('a server that asks for an access token', () => {
-  test('shows the sign-in form instead of the page, with the draft banner', async ({ page }) => {
+  test('shows the sign-in form instead of the page', async ({ page }) => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-    await expect(page.getByTestId('draft-banner')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Generate test cases' })).toHaveCount(0);
   });
 

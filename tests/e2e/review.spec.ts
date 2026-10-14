@@ -135,6 +135,11 @@ test.describe('reviewing a run in the browser, offline', () => {
     expect(markdown.ok()).toBe(true);
     const md = await markdown.text();
     expect(md).toContain('AI draft: needs QA review');
+    // The tickets come first, with their full text, before any case.
+    expect(md).toContain('## Tickets covered');
+    expect(md).toContain('### EVAL-1: Bulk shipment creation for selected orders');
+    expect(md).toContain('At most 100 orders can be selected for one bulk action.');
+    expect(md.indexOf('## Tickets covered')).toBeLessThan(md.indexOf('### TC-1'));
     expect(md).toContain('Reworded for the download');
     expect(md).toContain('Edited by QA');
     expect(await csv.text()).toContain('Reworded for the download');

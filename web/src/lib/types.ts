@@ -80,6 +80,24 @@ export interface JobResult {
   durationMs: number;
 }
 
+/** A ticket as fetched from Jira, with its text, so the page can show what the cases come from. */
+export interface TicketDetail {
+  key: string;
+  url: string;
+  summary: string;
+  type: string;
+  status: string;
+  description: string;
+  acceptanceCriteria?: string;
+  labels: string[];
+  components?: string[];
+  parentKey?: string;
+  updated?: string;
+  commentCount: number;
+  comments: { author: string; created: string; body: string }[];
+  truncated: boolean;
+}
+
 export interface ApiJob {
   id: string;
   status: JobStatus;
@@ -89,6 +107,8 @@ export interface ApiJob {
   finishedAt?: string;
   cancelRequested: boolean;
   progress: { stage: string; total: number; done: number; tickets: TicketProgress[] };
+  /** True once the ticket text has been fetched and can be read from the tickets route. */
+  hasTicketDetails?: boolean;
   runId?: string;
   result?: JobResult;
   error?: string;
@@ -131,6 +151,8 @@ export interface ApiRun extends ApiRunSummary {
     cached: boolean;
     error: string | null;
     detail: { sufficient: boolean; missing: string[] } | null;
+    /** The ticket text the cases were written against. Null for runs saved before it was kept. */
+    snapshot?: TicketDetail | null;
   }[];
   calls: number;
   durationMs: number | null;
