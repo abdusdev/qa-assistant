@@ -42,7 +42,9 @@ function referenceRecall(
 async function main(): Promise<void> {
   const { ai } = loadConfig();
   if (ai.provider === 'fake') {
-    console.error('AI_PROVIDER is "fake". Set AI_PROVIDER=gemini (with AI_API_KEY and AI_MODEL).');
+    console.error(
+      'AI_PROVIDER is "fake". Set AI_PROVIDER to gemini, openai or grok (with AI_API_KEY and AI_MODEL).',
+    );
     process.exitCode = 1;
     return;
   }

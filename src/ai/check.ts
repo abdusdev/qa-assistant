@@ -18,7 +18,9 @@ async function main(): Promise<void> {
 
   console.log(`Provider: ${provider.name}${ai.model ? ` (model: ${ai.model})` : ''}`);
   if (provider.name === 'fake') {
-    console.log('AI_PROVIDER is "fake", so no real call is made. Set AI_PROVIDER=gemini to test.');
+    console.log(
+      'AI_PROVIDER is "fake", so no real call is made. Set AI_PROVIDER to gemini, openai or grok to test.',
+    );
   }
 
   const started = Date.now();

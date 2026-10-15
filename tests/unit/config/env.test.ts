@@ -143,6 +143,31 @@ describe('loadConfig', () => {
     });
   });
 
+  it.each(['openai', 'grok'] as const)(
+    'accepts %s and requires its key and model, naming the provider',
+    (provider) => {
+      expect(() => loadConfig({ AI_PROVIDER: provider })).toThrow(
+        new RegExp(
+          `AI_API_KEY[\\s\\S]*AI_MODEL[\\s\\S]*"${provider}"|"${provider}"[\\s\\S]*AI_MODEL`,
+        ),
+      );
+      expect(() => loadConfig({ AI_PROVIDER: provider, AI_API_KEY: 'key' })).toThrow(/AI_MODEL/);
+      expect(
+        loadConfig({ AI_PROVIDER: provider, AI_API_KEY: 'key', AI_MODEL: 'some-model' }).ai,
+      ).toEqual({
+        provider,
+        apiKey: 'key',
+        model: 'some-model',
+        maxOutputTokens: 8192,
+        fallbackModels: [],
+      });
+    },
+  );
+
+  it('rejects an unknown AI provider', () => {
+    expect(() => loadConfig({ AI_PROVIDER: 'claude-or-whatever' })).toThrow(/AI_PROVIDER/);
+  });
+
   it('does not need a key or model for the fake provider', () => {
     expect(loadConfig({ AI_PROVIDER: 'fake' }).ai).toEqual({
       provider: 'fake',

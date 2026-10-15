@@ -9,7 +9,7 @@
  *          --single-call         one AI call per ticket: no self-review and no AI flow step, so
  *                                the ticket, knowledge and code go out once, in one prompt
  *          --print-prompt        print the exact prompt for each ticket and stop (no AI call)
- *          --allow-real-tickets  (needed to send real Jira tickets to Gemini)
+ *          --allow-real-tickets  (needed to send real Jira tickets to the AI provider)
  *          --no-code-context     leave the pull request changes out of this run
  *          --allow-code-to-ai    agree, for this run, that source code goes to the AI provider
  *                                (or set ALLOW_CODE_TO_AI=true in .env)
@@ -133,8 +133,8 @@ async function main(): Promise<void> {
     if (!flags.has('allow-real-tickets') && !flags.has('print-prompt')) {
       console.error(
         'This would send real Jira ticket text to the AI provider.\n' +
-          'On the free Gemini tier, Google may use that content to improve its products and ' +
-          'reviewers may read it.\nUse the paid tier or get approval, then add --allow-real-tickets.\n' +
+          'On a free tier the provider may use that content to improve its products and ' +
+          'reviewers may read it.\nUse a paid plan or get approval, then add --allow-real-tickets.\n' +
           'To try the pipeline safely, use: npm run pipeline -- file evals/tickets/example-bulk-shipment.json',
       );
       process.exitCode = 1;

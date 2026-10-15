@@ -23,7 +23,7 @@ export type CodeContextDecision =
   | { use: false; error: string };
 
 const HOW_TO_CONSENT =
-  'Source code goes to the AI provider, and on the free Gemini tier Google may use that content.\n' +
+  'Source code goes to the AI provider, and on a free tier the provider may use that content.\n' +
   'If that is approved, set ALLOW_CODE_TO_AI=true in .env (or add --allow-code-to-ai for one run). ' +
   'To leave the code out of this run, add --no-code-context.';
 

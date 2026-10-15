@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   if (!flags.has('allow-code-to-ai')) {
     console.error(
       'This would send ShipNest source code to the AI provider.\n' +
-        'On the free Gemini tier, Google may use that content to improve its products and ' +
+        'On a free tier the provider may use that content to improve its products and ' +
         'reviewers may read it.\nGet approval or use the paid tier, then add --allow-code-to-ai.\n' +
         'To see which files would be sent first, run: npm run digest -- plan ...',
     );
